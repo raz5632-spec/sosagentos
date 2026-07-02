@@ -27,10 +27,49 @@ export class KnowledgeController {
     return this.knowledge.list(orgId, status);
   }
 
+  @Get("search")
+  @Roles("owner", "manager", "coach")
+  search(
+    @Param("orgId") orgId: string,
+    @Query("q") q?: string,
+    @Query("status") status?: string,
+    @Query("limit") limit?: string,
+  ) {
+    if (!q?.trim()) throw new BadRequestException("query param q is required");
+    return this.knowledge.search(orgId, q, { status, limit: limit ? Number(limit) : undefined });
+  }
+
   @Get(":id")
   @Roles("owner", "manager", "coach")
   get(@Param("orgId") orgId: string, @Param("id") id: string) {
     return this.knowledge.get(orgId, id);
+  }
+
+  @Get(":id/edges")
+  @Roles("owner", "manager", "coach")
+  edges(@Param("orgId") orgId: string, @Param("id") id: string) {
+    return this.knowledge.edges(orgId, id);
+  }
+
+  @Post(":id/edges")
+  @Roles("owner", "manager")
+  addEdge(
+    @Param("orgId") orgId: string,
+    @Param("id") id: string,
+    @CurrentUser() user: JwtClaims,
+    @Body() body: { toItemId?: string; relationType?: string; weight?: number },
+    @Req() req: ApiRequest,
+  ) {
+    if (!body?.toItemId || !body?.relationType) {
+      throw new BadRequestException("toItemId and relationType are required");
+    }
+    return this.knowledge.addEdge(
+      orgId,
+      id,
+      { toItemId: body.toItemId, relationType: body.relationType, weight: body.weight },
+      user.sub,
+      req.traceId,
+    );
   }
 
   @Post()

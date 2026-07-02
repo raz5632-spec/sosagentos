@@ -4,3 +4,4 @@ export * from "./anthropic.js";
 export * from "./router.js";
 export * from "./runtime.js";
 export * from "./fake.js";
+export * from "./embeddings.js";

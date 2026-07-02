@@ -131,3 +131,103 @@ describe("KNO-001 knowledge pipeline e2e", () => {
     expect(item?.status).toBe("candidate");
   });
 });
+
+describe("KNO-002 semantic search + graph e2e", () => {
+  let app: INestApplication;
+  let token: string;
+  let orgId: string;
+  let salesItemId: string;
+  let cookingItemId: string;
+
+  beforeAll(async () => {
+    delete process.env.ANTHROPIC_API_KEY;
+    const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
+    app = moduleRef.createNestApplication();
+    await app.init();
+
+    const login = await request(app.getHttpServer())
+      .post("/auth/login")
+      .send({ email: ADMIN_EMAIL, password: ADMIN_PASSWORD })
+      .expect(201);
+    token = login.body.token;
+    orgId = login.body.organizations[0].orgId;
+
+    const capture = async (title: string, content: string) => {
+      const res = await request(app.getHttpServer())
+        .post(`/orgs/${orgId}/knowledge`)
+        .set("Authorization", `Bearer ${token}`)
+        .send({ title, content })
+        .expect(201);
+      const submit = await request(app.getHttpServer())
+        .post(`/orgs/${orgId}/knowledge/${res.body.id}/submit`)
+        .set("Authorization", `Bearer ${token}`)
+        .expect(201);
+      await request(app.getHttpServer())
+        .post(`/orgs/${orgId}/approvals/${submit.body.approvalId}/approve`)
+        .set("Authorization", `Bearer ${token}`)
+        .expect(201);
+      return res.body.id as string;
+    };
+
+    salesItemId = await capture(
+      "Handling price objections",
+      "When a prospect raises a price objection, acknowledge the concern, restate the value, and anchor against the cost of inaction. Price objections usually hide a value gap.",
+    );
+    cookingItemId = await capture(
+      "Pasta cooking basics",
+      "Boil water with plenty of salt, cook the pasta until al dente, and always reserve some pasta water for the sauce.",
+    );
+  });
+
+  afterAll(async () => {
+    const db = getDb();
+    await db.knowledgeEdge.deleteMany({ where: { fromItemId: { in: [salesItemId, cookingItemId] } } });
+    await app.close();
+  });
+
+  it("search ranks the topically-matching item first", async () => {
+    const res = await request(app.getHttpServer())
+      .get(`/orgs/${orgId}/knowledge/search`)
+      .query({ q: "how do I answer a price objection from a prospect" })
+      .set("Authorization", `Bearer ${token}`)
+      .expect(200);
+    expect(res.body.length).toBeGreaterThan(0);
+    expect(res.body[0].itemId).toBe(salesItemId);
+    expect(res.body[0].score).toBeGreaterThan(res.body.find((r: any) => r.itemId === cookingItemId)?.score ?? 0);
+  });
+
+  it("search requires a query", async () => {
+    await request(app.getHttpServer())
+      .get(`/orgs/${orgId}/knowledge/search`)
+      .set("Authorization", `Bearer ${token}`)
+      .expect(400);
+  });
+
+  it("creates and reads graph edges in both directions", async () => {
+    await request(app.getHttpServer())
+      .post(`/orgs/${orgId}/knowledge/${salesItemId}/edges`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ toItemId: cookingItemId, relationType: "related_to", weight: 0.4 })
+      .expect(201);
+
+    const out = await request(app.getHttpServer())
+      .get(`/orgs/${orgId}/knowledge/${salesItemId}/edges`)
+      .set("Authorization", `Bearer ${token}`)
+      .expect(200);
+    expect(out.body.outgoing[0].item.id).toBe(cookingItemId);
+
+    const inn = await request(app.getHttpServer())
+      .get(`/orgs/${orgId}/knowledge/${cookingItemId}/edges`)
+      .set("Authorization", `Bearer ${token}`)
+      .expect(200);
+    expect(inn.body.incoming[0].item.id).toBe(salesItemId);
+  });
+
+  it("rejects edges to items outside the org", async () => {
+    await request(app.getHttpServer())
+      .post(`/orgs/${orgId}/knowledge/${salesItemId}/edges`)
+      .set("Authorization", `Bearer ${token}`)
+      .send({ toItemId: "00000000-0000-0000-0000-000000000000", relationType: "related_to" })
+      .expect(404);
+  });
+});

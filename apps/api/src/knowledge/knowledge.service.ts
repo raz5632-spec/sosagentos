@@ -5,7 +5,8 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import { createHash } from "node:crypto";
-import { getDb, writeAudit } from "@salesos/db";
+import { getDb, writeAudit, Prisma } from "@salesos/db";
+import { HashingEmbeddingProvider, toVectorLiteral, type EmbeddingProvider } from "@salesos/ai";
 
 /** Simple sentence-aware chunker (~1500 chars, embeddings arrive in KNO-002). */
 export function chunkText(text: string, maxLen = 1500): string[] {
@@ -26,6 +27,8 @@ export function chunkText(text: string, maxLen = 1500): string[] {
 
 @Injectable()
 export class KnowledgeService {
+  private embedder: EmbeddingProvider = new HashingEmbeddingProvider();
+
   /** Capture: create a candidate knowledge item with version 1 + chunks. */
   async capture(
     orgId: string,
@@ -66,8 +69,17 @@ export class KnowledgeService {
         seq,
         content,
         tokenCount: Math.ceil(content.length / 4),
+        metadataJson: { embedding_provider: this.embedder.code },
       })),
     });
+
+    // Embeddings live in an Unsupported(vector) column — write via raw SQL.
+    const vectors = await this.embedder.embed(chunks);
+    for (let seq = 0; seq < chunks.length; seq++) {
+      await db.$executeRaw`
+        UPDATE knowledge_chunks SET embedding = ${toVectorLiteral(vectors[seq])}::vector
+        WHERE knowledge_item_id = ${item.id} AND seq = ${seq}`;
+    }
 
     await writeAudit({
       orgId,
@@ -166,6 +178,96 @@ export class KnowledgeService {
       traceId,
     });
     return { id, status: "production" };
+  }
+
+  /** Semantic search over chunk embeddings (cosine distance, HNSW index). */
+  async search(orgId: string, query: string, opts: { status?: string; limit?: number } = {}) {
+    const [qVec] = await this.embedder.embed([query]);
+    const status = opts.status ?? "production";
+    const limit = Math.min(opts.limit ?? 10, 50);
+    const rows = await getDb().$queryRaw<
+      Array<{
+        item_id: string;
+        title: string;
+        status: string;
+        seq: number;
+        content: string;
+        distance: number;
+      }>
+    >`
+      SELECT ki.id AS item_id, ki.title, ki.status, kc.seq, kc.content,
+             (kc.embedding <=> ${toVectorLiteral(qVec)}::vector) AS distance
+      FROM knowledge_chunks kc
+      JOIN knowledge_items ki ON ki.id = kc.knowledge_item_id
+      WHERE ki.org_id = ${orgId}
+        AND kc.embedding IS NOT NULL
+        AND (${status} = 'any' OR ki.status = ${status})
+      ORDER BY distance ASC
+      LIMIT ${limit}`;
+    return rows.map((r) => ({
+      itemId: r.item_id,
+      title: r.title,
+      status: r.status,
+      seq: r.seq,
+      snippet: r.content.slice(0, 300),
+      score: 1 - r.distance, // cosine similarity
+    }));
+  }
+
+  /** Knowledge graph: link two items. */
+  async addEdge(
+    orgId: string,
+    fromItemId: string,
+    input: { toItemId: string; relationType: string; weight?: number },
+    actorUserId: string,
+    traceId?: string,
+  ) {
+    const db = getDb();
+    const [from, to] = await Promise.all([
+      db.knowledgeItem.findFirst({ where: { id: fromItemId, orgId } }),
+      db.knowledgeItem.findFirst({ where: { id: input.toItemId, orgId } }),
+    ]);
+    if (!from || !to) throw new NotFoundException("knowledge item not found in this org");
+
+    const edge = await db.knowledgeEdge.create({
+      data: {
+        orgId,
+        fromItemId,
+        toItemId: input.toItemId,
+        relationType: input.relationType,
+        weight: input.weight ?? 1.0,
+      },
+    });
+    await writeAudit({
+      orgId,
+      actorType: "user",
+      actorId: actorUserId,
+      action: "knowledge.edge_created",
+      subjectType: "knowledge_edge",
+      subjectId: edge.id,
+      traceId,
+      payload: { fromItemId, toItemId: input.toItemId, relationType: input.relationType },
+    });
+    return edge;
+  }
+
+  /** Both directions of an item's graph neighborhood. */
+  async edges(orgId: string, itemId: string) {
+    const db = getDb();
+    const [out, inn] = await Promise.all([
+      db.knowledgeEdge.findMany({
+        where: { orgId, fromItemId: itemId },
+        include: { toItem: { select: { id: true, title: true, status: true } } },
+      }),
+      db.knowledgeEdge.findMany({
+        where: { orgId, toItemId: itemId },
+        include: { fromItem: { select: { id: true, title: true, status: true } } },
+      }),
+    ]);
+    return {
+      outgoing: out.map((e) => ({ id: e.id, relationType: e.relationType, weight: e.weight, item: e.toItem })),
+      incoming: inn.map((e) => ({ id: e.id, relationType: e.relationType, weight: e.weight, item: e.fromItem })),
+    };
   }
 
   /** Return a rejected candidate to candidate state. */
