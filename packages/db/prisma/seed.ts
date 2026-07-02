@@ -1,4 +1,5 @@
 import { PrismaClient } from "@prisma/client";
+import bcrypt from "bcryptjs";
 
 const db = new PrismaClient();
 
@@ -50,10 +51,12 @@ async function main() {
     await db.role.upsert({ where: { code: role.code }, update: {}, create: role });
   }
 
+  const adminPassword = process.env.SEED_ADMIN_PASSWORD ?? "sos-dev-2026";
+  const passwordHash = await bcrypt.hash(adminPassword, 10);
   const admin = await db.user.upsert({
     where: { email: "raz5632@gmail.com" },
-    update: {},
-    create: { email: "raz5632@gmail.com", displayName: "Raz (CEO)" },
+    update: { passwordHash },
+    create: { email: "raz5632@gmail.com", displayName: "Raz (CEO)", passwordHash },
   });
 
   const ownerRole = await db.role.findUniqueOrThrow({ where: { code: "owner" } });
