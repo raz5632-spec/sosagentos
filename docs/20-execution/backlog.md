@@ -7,8 +7,8 @@
 | 3 | IAM-001 | Organizations, users, roles, memberships, tenant guards | Foundational | 6d | DAT-001 | **done** |
 | 4 | AGT-001 | ACP contracts + agent registry + invocation logging | Critical differentiator | 8d | DAT-001 | **done** |
 | 5 | GOV-001 | Approval engine + audit trail + rollback patterns | Critical differentiator | 6d | IAM-001, AGT-001 | **done** |
-| 6 | KNO-001 | File ingestion + knowledge item/version pipeline | Critical differentiator | 8d | AGT-001 | **next** |
-| 7 | KNO-002 | pgvector retrieval + graph edge relationships | Critical differentiator | 6d | KNO-001 | pending |
+| 6 | KNO-001 | File ingestion + knowledge item/version pipeline | Critical differentiator | 8d | AGT-001 | **done** (text capture v1; file upload/STT later) |
+| 7 | KNO-002 | pgvector retrieval + graph edge relationships | Critical differentiator | 6d | KNO-001 | **next** |
 | 8 | DNA-001 | Organizational DNA Engine + brand rules evaluation | High | 4d | KNO-001 | pending |
 | 9 | EDU-001 | Course / lesson / transcript pipeline | High | 7d | DAT-001 | pending |
 | 10 | STD-001 | Student timeline + risk profiling + coach actions | High | 8d | EDU-001, KNO-002 | pending |

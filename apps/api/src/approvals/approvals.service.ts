@@ -8,10 +8,14 @@ import { getDb, writeAudit } from "@salesos/db";
 import { AcpMessage } from "@salesos/contracts";
 import type { TaskClass } from "@salesos/ai";
 import { AgentsService } from "../agents/agents.service.js";
+import { KnowledgeService } from "../knowledge/knowledge.service.js";
 
 @Injectable()
 export class ApprovalsService {
-  constructor(private readonly agents: AgentsService) {}
+  constructor(
+    private readonly agents: AgentsService,
+    private readonly knowledge: KnowledgeService,
+  ) {}
 
   async list(orgId: string, status = "pending") {
     const rows = await getDb().approval.findMany({
@@ -20,7 +24,11 @@ export class ApprovalsService {
       take: 100,
     });
     return rows.map((a) => {
-      const payload = a.payloadJson as { message?: { objective?: string; approvalLevel?: string; targetAgent?: string } } | null;
+      const payload = a.payloadJson as {
+        message?: { objective?: string; approvalLevel?: string; targetAgent?: string };
+        title?: string;
+        type?: string;
+      } | null;
       return {
         id: a.id,
         subjectType: a.subjectType,
@@ -29,7 +37,7 @@ export class ApprovalsService {
         status: a.status,
         createdAt: a.createdAt,
         decidedAt: a.decidedAt,
-        objective: payload?.message?.objective,
+        objective: payload?.message?.objective ?? payload?.title,
         approvalLevel: payload?.message?.approvalLevel,
         targetAgent: payload?.message?.targetAgent,
       };
@@ -47,12 +55,6 @@ export class ApprovalsService {
 
   async approve(orgId: string, approvalId: string, approverUserId: string, traceId?: string) {
     const approval = await this.loadPending(orgId, approvalId);
-    const payload = approval.payloadJson as { message?: unknown; taskClass?: TaskClass } | null;
-    if (!payload?.message) {
-      throw new BadRequestException("approval has no replayable payload");
-    }
-    const msg = AcpMessage.parse(payload.message);
-
     const db = getDb();
     await db.approval.update({
       where: { id: approval.id },
@@ -66,11 +68,21 @@ export class ApprovalsService {
       subjectType: "approval",
       subjectId: approval.id,
       traceId,
-      payload: { objective: msg.objective, approvalLevel: msg.approvalLevel },
     });
 
-    // Re-dispatch the parked message with the human approval attached.
-    return this.agents.dispatchApproved(msg, payload.taskClass ?? "default", traceId);
+    switch (approval.subjectType) {
+      case "acp_message": {
+        const payload = approval.payloadJson as { message?: unknown; taskClass?: TaskClass } | null;
+        if (!payload?.message) throw new BadRequestException("approval has no replayable payload");
+        const msg = AcpMessage.parse(payload.message);
+        // Re-dispatch the parked message with the human approval attached.
+        return this.agents.dispatchApproved(msg, payload.taskClass ?? "default", traceId);
+      }
+      case "knowledge_item":
+        return this.knowledge.promote(orgId, approval.subjectId, approverUserId, traceId);
+      default:
+        throw new BadRequestException(`unsupported approval subject: ${approval.subjectType}`);
+    }
   }
 
   async reject(
@@ -100,6 +112,9 @@ export class ApprovalsService {
       traceId,
       payload: { reason: reason ?? null },
     });
+    if (approval.subjectType === "knowledge_item") {
+      await this.knowledge.demote(orgId, approval.subjectId, traceId);
+    }
     return { id: approval.id, status: "rejected", reason: reason ?? null };
   }
 }
