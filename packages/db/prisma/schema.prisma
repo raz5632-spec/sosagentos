@@ -1,0 +1,721 @@
+// SalesOS canonical BOM schema — see docs/03-data/bom-and-erd.md
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [pgvector(map: "vector")]
+}
+
+// ── Core business ────────────────────────────────────────────────
+
+model Organization {
+  id           String   @id @default(uuid())
+  name         String
+  slug         String   @unique
+  packageType  String   @default("core") @map("package_type")
+  status       String   @default("active")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  memberships            Membership[]
+  students               Student[]
+  courses                Course[]
+  cohorts                Cohort[]
+  lessons                Lesson[]
+  knowledgeItems         KnowledgeItem[]
+  knowledgeEdges         KnowledgeEdge[]
+  brandRules             BrandRule[]
+  decisions              Decision[]
+  approvals              Approval[]
+  contentAssets          ContentAsset[]
+  campaigns              Campaign[]
+  competitors            Competitor[]
+  researchBriefs         ResearchBrief[]
+  workflows              Workflow[]
+  integrationConnections IntegrationConnection[]
+  auditEvents            AuditEvent[]
+  reports                Report[]
+  kpiSnapshots           KpiSnapshot[]
+
+  @@map("organizations")
+}
+
+model User {
+  id          String   @id @default(uuid())
+  email       String   @unique
+  displayName String   @map("display_name")
+  status      String   @default("active")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  memberships  Membership[]
+  coachProfile CoachProfile?
+  students     Student[]     @relation("PrimaryCoach")
+  approvals    Approval[]    @relation("Approver")
+  feedback     Feedback[]
+
+  @@map("users")
+}
+
+model Role {
+  id          String @id @default(uuid())
+  code        String @unique
+  description String
+
+  memberships Membership[]
+
+  @@map("roles")
+}
+
+model Membership {
+  id              String  @id @default(uuid())
+  orgId           String  @map("org_id")
+  userId          String  @map("user_id")
+  roleId          String  @map("role_id")
+  permissionsJson Json?   @map("permissions_json")
+
+  organization Organization @relation(fields: [orgId], references: [id])
+  user         User         @relation(fields: [userId], references: [id])
+  role         Role         @relation(fields: [roleId], references: [id])
+
+  @@unique([orgId, userId, roleId])
+  @@index([orgId])
+  @@map("memberships")
+}
+
+model Student {
+  id                 String   @id @default(uuid())
+  orgId              String   @map("org_id")
+  primaryCoachUserId String?  @map("primary_coach_user_id")
+  stage              String   @default("onboarding")
+  motivationScore    Float?   @map("motivation_score")
+  dropoutRisk        Float?   @map("dropout_risk")
+  retentionScore     Float?   @map("retention_score")
+  learningStyle      String?  @map("learning_style")
+  createdAt          DateTime @default(now()) @map("created_at")
+
+  organization Organization @relation(fields: [orgId], references: [id])
+  primaryCoach User?        @relation("PrimaryCoach", fields: [primaryCoachUserId], references: [id])
+  submissions  Submission[]
+
+  @@index([orgId])
+  @@index([orgId, dropoutRisk])
+  @@map("students")
+}
+
+model CoachProfile {
+  userId      String  @id @map("user_id")
+  specialties Json?
+  maxCapacity Int?    @map("max_capacity")
+  activeFlag  Boolean @default(true) @map("active_flag")
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@map("coach_profiles")
+}
+
+model Course {
+  id      String @id @default(uuid())
+  orgId   String @map("org_id")
+  title   String
+  version Int    @default(1)
+  status  String @default("draft")
+
+  organization Organization @relation(fields: [orgId], references: [id])
+  lessons      Lesson[]
+  cohorts      Cohort[]
+  assignments  Assignment[]
+
+  @@index([orgId])
+  @@map("courses")
+}
+
+model Cohort {
+  id       String    @id @default(uuid())
+  orgId    String    @map("org_id")
+  courseId String    @map("course_id")
+  name     String
+  startAt  DateTime? @map("start_at")
+  endAt    DateTime? @map("end_at")
+
+  organization Organization @relation(fields: [orgId], references: [id])
+  course       Course       @relation(fields: [courseId], references: [id])
+
+  @@index([orgId])
+  @@map("cohorts")
+}
+
+model Lesson {
+  id            String    @id @default(uuid())
+  orgId         String    @map("org_id")
+  courseId      String    @map("course_id")
+  scheduledAt   DateTime? @map("scheduled_at")
+  teacherUserId String?   @map("teacher_user_id")
+
+  organization Organization @relation(fields: [orgId], references: [id])
+  course       Course       @relation(fields: [courseId], references: [id])
+  recording    Recording?
+  transcript   Transcript?
+  assignments  Assignment[]
+
+  @@index([orgId])
+  @@map("lessons")
+}
+
+model Recording {
+  id          String @id @default(uuid())
+  orgId       String @map("org_id")
+  lessonId    String @unique @map("lesson_id")
+  provider    String
+  storageUri  String @map("storage_uri")
+  durationSec Int?   @map("duration_sec")
+
+  lesson Lesson @relation(fields: [lessonId], references: [id])
+
+  @@map("recordings")
+}
+
+model Transcript {
+  id           String @id @default(uuid())
+  orgId        String @map("org_id")
+  lessonId     String @unique @map("lesson_id")
+  text         String
+  sttProvider  String @map("stt_provider")
+  qualityScore Float? @map("quality_score")
+
+  lesson Lesson @relation(fields: [lessonId], references: [id])
+
+  @@map("transcripts")
+}
+
+model Assignment {
+  id         String    @id @default(uuid())
+  orgId      String    @map("org_id")
+  courseId   String    @map("course_id")
+  lessonId   String?   @map("lesson_id")
+  rubricJson Json?     @map("rubric_json")
+  dueAt      DateTime? @map("due_at")
+
+  course      Course       @relation(fields: [courseId], references: [id])
+  lesson      Lesson?      @relation(fields: [lessonId], references: [id])
+  submissions Submission[]
+
+  @@index([orgId])
+  @@map("assignments")
+}
+
+model Submission {
+  id               String    @id @default(uuid())
+  assignmentId     String    @map("assignment_id")
+  studentId        String    @map("student_id")
+  submittedAt      DateTime? @map("submitted_at")
+  score            Float?
+  revisionRequired Boolean   @default(false) @map("revision_required")
+
+  assignment Assignment @relation(fields: [assignmentId], references: [id])
+  student    Student    @relation(fields: [studentId], references: [id])
+  feedback   Feedback[]
+
+  @@index([studentId])
+  @@map("submissions")
+}
+
+model Feedback {
+  id           String  @id @default(uuid())
+  submissionId String  @map("submission_id")
+  authorUserId String? @map("author_user_id")
+  aiGenerated  Boolean @default(false) @map("ai_generated")
+  content      String
+  version      Int     @default(1)
+
+  submission Submission @relation(fields: [submissionId], references: [id])
+  author     User?      @relation(fields: [authorUserId], references: [id])
+
+  @@map("feedback")
+}
+
+// ── Decisioning ──────────────────────────────────────────────────
+
+model Decision {
+  id            String   @id @default(uuid())
+  orgId         String   @map("org_id")
+  type          String
+  objective     String
+  status        String   @default("open")
+  createdBy     String   @map("created_by")
+  approvalLevel String   @map("approval_level")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  organization    Organization     @relation(fields: [orgId], references: [id])
+  insights        Insight[]
+  recommendations Recommendation[]
+
+  @@index([orgId, status])
+  @@map("decisions")
+}
+
+model Insight {
+  id         String @id @default(uuid())
+  orgId      String @map("org_id")
+  decisionId String @map("decision_id")
+  type       String
+  confidence Float
+  summary    String
+
+  decision Decision @relation(fields: [decisionId], references: [id])
+
+  @@map("insights")
+}
+
+model Recommendation {
+  id         String @id @default(uuid())
+  orgId      String @map("org_id")
+  decisionId String @map("decision_id")
+  actionType String @map("action_type")
+  confidence Float
+  rationale  String
+
+  decision Decision @relation(fields: [decisionId], references: [id])
+
+  @@map("recommendations")
+}
+
+model Approval {
+  id             String    @id @default(uuid())
+  orgId          String    @map("org_id")
+  subjectType    String    @map("subject_type")
+  subjectId      String    @map("subject_id")
+  requestedBy    String    @map("requested_by")
+  approverUserId String?   @map("approver_user_id")
+  status         String    @default("pending")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  decidedAt      DateTime? @map("decided_at")
+
+  organization Organization @relation(fields: [orgId], references: [id])
+  approver     User?        @relation("Approver", fields: [approverUserId], references: [id])
+
+  @@index([orgId, status])
+  @@index([subjectType, subjectId])
+  @@map("approvals")
+}
+
+// ── Knowledge ────────────────────────────────────────────────────
+
+model KnowledgeItem {
+  id               String   @id @default(uuid())
+  orgId            String   @map("org_id")
+  type             String
+  title            String
+  status           String   @default("candidate")
+  sourceType       String   @map("source_type")
+  sourceRef        String?  @map("source_ref")
+  currentVersionId String?  @map("current_version_id")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  organization Organization       @relation(fields: [orgId], references: [id])
+  versions     KnowledgeVersion[]
+  chunks       KnowledgeChunk[]
+  edgesFrom    KnowledgeEdge[]    @relation("EdgeFrom")
+  edgesTo      KnowledgeEdge[]    @relation("EdgeTo")
+
+  @@index([orgId, status])
+  @@map("knowledge_items")
+}
+
+model KnowledgeVersion {
+  id              String    @id @default(uuid())
+  knowledgeItemId String    @map("knowledge_item_id")
+  versionNo       Int       @map("version_no")
+  contentHash     String    @map("content_hash")
+  approvedBy      String?   @map("approved_by")
+  approvedAt      DateTime? @map("approved_at")
+
+  knowledgeItem KnowledgeItem @relation(fields: [knowledgeItemId], references: [id])
+
+  @@unique([knowledgeItemId, versionNo])
+  @@map("knowledge_versions")
+}
+
+model KnowledgeChunk {
+  id              String                       @id @default(uuid())
+  knowledgeItemId String                       @map("knowledge_item_id")
+  seq             Int
+  content         String
+  embedding       Unsupported("vector(1536)")?
+  tokenCount      Int?                         @map("token_count")
+  metadataJson    Json?                        @map("metadata_json")
+
+  knowledgeItem KnowledgeItem @relation(fields: [knowledgeItemId], references: [id])
+
+  @@unique([knowledgeItemId, seq])
+  @@map("knowledge_chunks")
+}
+
+model KnowledgeEdge {
+  id           String @id @default(uuid())
+  orgId        String @map("org_id")
+  fromItemId   String @map("from_item_id")
+  toItemId     String @map("to_item_id")
+  relationType String @map("relation_type")
+  weight       Float  @default(1.0)
+
+  organization Organization  @relation(fields: [orgId], references: [id])
+  fromItem     KnowledgeItem @relation("EdgeFrom", fields: [fromItemId], references: [id])
+  toItem       KnowledgeItem @relation("EdgeTo", fields: [toItemId], references: [id])
+
+  @@index([fromItemId])
+  @@index([toItemId])
+  @@map("knowledge_edges")
+}
+
+model BrandRule {
+  id       String  @id @default(uuid())
+  orgId    String  @map("org_id")
+  ruleType String  @map("rule_type")
+  ruleText String  @map("rule_text")
+  severity String  @default("major")
+  active   Boolean @default(true)
+
+  organization Organization @relation(fields: [orgId], references: [id])
+
+  @@index([orgId, active])
+  @@map("brand_rules")
+}
+
+// ── Content ──────────────────────────────────────────────────────
+
+model ContentAsset {
+  id               String   @id @default(uuid())
+  orgId            String   @map("org_id")
+  type             String
+  title            String
+  status           String   @default("draft")
+  targetChannel    String?  @map("target_channel")
+  sourceDecisionId String?  @map("source_decision_id")
+  campaignId       String?  @map("campaign_id")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  organization Organization     @relation(fields: [orgId], references: [id])
+  campaign     Campaign?        @relation(fields: [campaignId], references: [id])
+  versions     ContentVersion[]
+  designBrief  DesignBrief?
+
+  @@index([orgId, status])
+  @@map("content_assets")
+}
+
+model ContentVersion {
+  id             String @id @default(uuid())
+  contentAssetId String @map("content_asset_id")
+  versionNo      Int    @map("version_no")
+  bodyJson       Json   @map("body_json")
+  qaStatus       String @default("pending") @map("qa_status")
+
+  contentAsset ContentAsset @relation(fields: [contentAssetId], references: [id])
+
+  @@unique([contentAssetId, versionNo])
+  @@map("content_versions")
+}
+
+model DesignBrief {
+  id              String  @id @default(uuid())
+  contentAssetId  String  @unique @map("content_asset_id")
+  canvaTemplateId String? @map("canva_template_id")
+  format          String
+  constraintsJson Json?   @map("constraints_json")
+
+  contentAsset ContentAsset @relation(fields: [contentAssetId], references: [id])
+
+  @@map("design_briefs")
+}
+
+model Campaign {
+  id             String @id @default(uuid())
+  orgId          String @map("org_id")
+  objective      String
+  targetAudience String @map("target_audience")
+  status         String @default("draft")
+
+  organization  Organization   @relation(fields: [orgId], references: [id])
+  contentAssets ContentAsset[]
+
+  @@index([orgId])
+  @@map("campaigns")
+}
+
+// ── Intelligence ─────────────────────────────────────────────────
+
+model Competitor {
+  id             String @id @default(uuid())
+  orgId          String @map("org_id")
+  name           String
+  handle         String?
+  channelsJson   Json?  @map("channels_json")
+  trackingStatus String @default("active") @map("tracking_status")
+
+  organization Organization             @relation(fields: [orgId], references: [id])
+  observations CompetitorObservation[]
+
+  @@index([orgId])
+  @@map("competitors")
+}
+
+model CompetitorObservation {
+  id           String   @id @default(uuid())
+  competitorId String   @map("competitor_id")
+  observedAt   DateTime @map("observed_at")
+  url          String?
+  contentType  String?  @map("content_type")
+  summary      String
+  signalsJson  Json?    @map("signals_json")
+
+  competitor Competitor @relation(fields: [competitorId], references: [id])
+
+  @@index([competitorId, observedAt])
+  @@map("competitor_observations")
+}
+
+model ResearchBrief {
+  id        String @id @default(uuid())
+  orgId     String @map("org_id")
+  question  String
+  scopeJson Json?  @map("scope_json")
+  status    String @default("open")
+
+  organization Organization       @relation(fields: [orgId], references: [id])
+  artifacts    ResearchArtifact[]
+
+  @@index([orgId])
+  @@map("research_briefs")
+}
+
+model ResearchArtifact {
+  id              String @id @default(uuid())
+  researchBriefId String @map("research_brief_id")
+  sourceUrl       String @map("source_url")
+  citation        String
+  relevanceScore  Float? @map("relevance_score")
+  summary         String
+
+  researchBrief ResearchBrief @relation(fields: [researchBriefId], references: [id])
+
+  @@map("research_artifacts")
+}
+
+// ── Automation ───────────────────────────────────────────────────
+
+model Workflow {
+  id             String @id @default(uuid())
+  orgId          String @map("org_id")
+  code           String
+  name           String
+  triggerType    String @map("trigger_type")
+  approvalPolicy String @map("approval_policy")
+
+  organization Organization      @relation(fields: [orgId], references: [id])
+  versions     WorkflowVersion[]
+  runs         WorkflowRun[]
+
+  @@unique([orgId, code])
+  @@map("workflows")
+}
+
+model WorkflowVersion {
+  id             String @id @default(uuid())
+  workflowId     String @map("workflow_id")
+  semver         String
+  definitionJson Json   @map("definition_json")
+  status         String @default("draft")
+
+  workflow Workflow      @relation(fields: [workflowId], references: [id])
+  runs     WorkflowRun[]
+
+  @@unique([workflowId, semver])
+  @@map("workflow_versions")
+}
+
+model WorkflowRun {
+  id         String    @id @default(uuid())
+  workflowId String    @map("workflow_id")
+  versionId  String    @map("version_id")
+  status     String    @default("created")
+  startedAt  DateTime? @map("started_at")
+  endedAt    DateTime? @map("ended_at")
+
+  workflow Workflow        @relation(fields: [workflowId], references: [id])
+  version  WorkflowVersion @relation(fields: [versionId], references: [id])
+  taskRuns TaskRun[]
+
+  @@index([workflowId, status])
+  @@map("workflow_runs")
+}
+
+model TaskRun {
+  id            String @id @default(uuid())
+  workflowRunId String @map("workflow_run_id")
+  taskId        String @map("task_id")
+  agentCode     String @map("agent_code")
+  priority      String @default("medium")
+  status        String @default("created")
+  attemptNo     Int    @default(1) @map("attempt_no")
+
+  workflowRun WorkflowRun @relation(fields: [workflowRunId], references: [id])
+
+  @@index([workflowRunId])
+  @@map("task_runs")
+}
+
+// ── Integrations ─────────────────────────────────────────────────
+
+model IntegrationConnection {
+  id          String @id @default(uuid())
+  orgId       String @map("org_id")
+  provider    String
+  scopesJson  Json?  @map("scopes_json")
+  status      String @default("disconnected")
+  connectedBy String? @map("connected_by")
+
+  organization     Organization      @relation(fields: [orgId], references: [id])
+  oauthCredentials OAuthCredential[]
+  webhookEndpoints WebhookEndpoint[]
+
+  @@unique([orgId, provider])
+  @@map("integration_connections")
+}
+
+model OAuthCredential {
+  id                      String    @id @default(uuid())
+  integrationConnectionId String    @map("integration_connection_id")
+  tokenRef                String    @map("token_ref")
+  refreshRef              String?   @map("refresh_ref")
+  expiresAt               DateTime? @map("expires_at")
+  subject                 String?
+
+  integrationConnection IntegrationConnection @relation(fields: [integrationConnectionId], references: [id])
+
+  @@map("oauth_credentials")
+}
+
+model WebhookEndpoint {
+  id                      String @id @default(uuid())
+  integrationConnectionId String @map("integration_connection_id")
+  provider                String
+  url                     String
+  verificationStatus      String @default("unverified") @map("verification_status")
+
+  integrationConnection IntegrationConnection @relation(fields: [integrationConnectionId], references: [id])
+  events                WebhookEvent[]
+
+  @@map("webhook_endpoints")
+}
+
+model WebhookEvent {
+  id                String    @id @default(uuid())
+  webhookEndpointId String    @map("webhook_endpoint_id")
+  providerEventId   String    @map("provider_event_id")
+  receivedAt        DateTime  @default(now()) @map("received_at")
+  processedAt       DateTime? @map("processed_at")
+  status            String    @default("received")
+  payloadJson       Json      @map("payload_json")
+
+  webhookEndpoint WebhookEndpoint @relation(fields: [webhookEndpointId], references: [id])
+
+  @@unique([webhookEndpointId, providerEventId])
+  @@map("webhook_events")
+}
+
+// ── Systems and controls ─────────────────────────────────────────
+
+model Agent {
+  id              String  @id @default(uuid())
+  code            String  @unique
+  department      String
+  modelPolicyJson Json?   @map("model_policy_json")
+  active          Boolean @default(true)
+
+  memories    AgentMemory[]
+  invocations ModelInvocation[]
+
+  @@map("agents")
+}
+
+model AgentMemory {
+  id           String  @id @default(uuid())
+  agentId      String  @map("agent_id")
+  scopeType    String  @map("scope_type")
+  scopeRef     String? @map("scope_ref")
+  summary      String
+  promotedFlag Boolean @default(false) @map("promoted_flag")
+
+  agent Agent @relation(fields: [agentId], references: [id])
+
+  @@index([agentId, scopeType])
+  @@map("agent_memories")
+}
+
+model ModelInvocation {
+  id         String   @id @default(uuid())
+  agentId    String   @map("agent_id")
+  provider   String
+  model      String
+  promptHash String   @map("prompt_hash")
+  tokensIn   Int      @map("tokens_in")
+  tokensOut  Int      @map("tokens_out")
+  costUsd    Decimal  @map("cost_usd") @db.Decimal(10, 6)
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  agent Agent @relation(fields: [agentId], references: [id])
+
+  @@index([agentId, createdAt])
+  @@map("model_invocations")
+}
+
+model AuditEvent {
+  id          String   @id @default(uuid())
+  orgId       String   @map("org_id")
+  actorType   String   @map("actor_type")
+  actorId     String   @map("actor_id")
+  action      String
+  subjectType String   @map("subject_type")
+  subjectId   String   @map("subject_id")
+  traceId     String?  @map("trace_id")
+  payloadJson Json?    @map("payload_json")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  organization Organization @relation(fields: [orgId], references: [id])
+
+  @@index([orgId, createdAt])
+  @@index([subjectType, subjectId])
+  @@map("audit_events")
+}
+
+model Report {
+  id          String   @id @default(uuid())
+  orgId       String   @map("org_id")
+  type        String
+  generatedAt DateTime @default(now()) @map("generated_at")
+  periodStart DateTime @map("period_start")
+  periodEnd   DateTime @map("period_end")
+  bodyJson    Json     @map("body_json")
+
+  organization Organization @relation(fields: [orgId], references: [id])
+
+  @@index([orgId, type])
+  @@map("reports")
+}
+
+model KpiSnapshot {
+  id             String   @id @default(uuid())
+  orgId          String   @map("org_id")
+  metricCode     String   @map("metric_code")
+  ts             DateTime
+  value          Float
+  dimensionsJson Json?    @map("dimensions_json")
+
+  organization Organization @relation(fields: [orgId], references: [id])
+
+  @@index([orgId, metricCode, ts])
+  @@map("kpi_snapshots")
+}

@@ -2,9 +2,9 @@
 
 | Rank | ID | Backlog item | Business impact | Est. | Dependencies | Status |
 |---|---|---|---|---|---|---|
-| 1 | FND-001 | Monorepo, CI, coding standards, CLAUDE package | Foundational | 5d | None | **in_progress** |
-| 2 | DAT-001 | Core Postgres schema for BOM + audit | Foundational | 7d | FND-001 | pending |
-| 3 | IAM-001 | Organizations, users, roles, memberships, tenant guards | Foundational | 6d | DAT-001 | pending |
+| 1 | FND-001 | Monorepo, CI, coding standards, CLAUDE package | Foundational | 5d | None | **done** (CI parked — token lacks workflow scope) |
+| 2 | DAT-001 | Core Postgres schema for BOM + audit | Foundational | 7d | FND-001 | **done** |
+| 3 | IAM-001 | Organizations, users, roles, memberships, tenant guards | Foundational | 6d | DAT-001 | **next** |
 | 4 | AGT-001 | ACP contracts + agent registry + invocation logging | Critical differentiator | 8d | DAT-001 | pending |
 | 5 | GOV-001 | Approval engine + audit trail + rollback patterns | Critical differentiator | 6d | IAM-001, AGT-001 | pending |
 | 6 | KNO-001 | File ingestion + knowledge item/version pipeline | Critical differentiator | 8d | AGT-001 | pending |
