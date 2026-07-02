@@ -6,10 +6,20 @@ import { ApprovalsModule } from "./approvals/approvals.module.js";
 import { KnowledgeModule } from "./knowledge/knowledge.module.js";
 import { DnaModule } from "./dna/dna.module.js";
 import { EducationModule } from "./education/education.module.js";
+import { StudentsModule } from "./students/students.module.js";
 import { HealthController } from "./health.controller.js";
 
 @Module({
-  imports: [AuthModule, OrgsModule, AgentsModule, ApprovalsModule, KnowledgeModule, DnaModule, EducationModule],
+  imports: [
+    AuthModule,
+    OrgsModule,
+    AgentsModule,
+    ApprovalsModule,
+    KnowledgeModule,
+    DnaModule,
+    EducationModule,
+    StudentsModule,
+  ],
   controllers: [HealthController],
 })
 export class AppModule {}

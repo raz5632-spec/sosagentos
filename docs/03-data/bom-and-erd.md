@@ -24,7 +24,7 @@ Relational core (PostgreSQL) + graph-friendly overlay (edge tables) + vector ret
 | users | id, email, display_name, status | 1:N memberships, approvals, comments, sessions |
 | roles | id, code, description | N:M users via memberships |
 | memberships | id, org_id, user_id, role_id, permissions_json | belongs to organization, user, role |
-| students | id, org_id, primary_coach_user_id, stage, motivation_score, dropout_risk, retention_score, learning_style | N:1 org, N:1 coach, 1:N submissions, lesson_attendance |
+| students | id, org_id, user_id (nullable, unique — platform identity link, added 2026-07-02), primary_coach_user_id, stage, motivation_score, dropout_risk, retention_score, learning_style | N:1 org, N:1 coach, 1:N submissions, lesson_attendance |
 | coach_profiles | user_id, specialties, max_capacity, active_flag | 1:1 users, 1:N students |
 | courses | id, org_id, title, version, status | 1:N lessons, cohorts |
 | cohorts | id, org_id, course_id, name, start_at, end_at | N:1 course, N:M students |

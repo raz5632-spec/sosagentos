@@ -51,9 +51,10 @@ model User {
   status       String   @default("active")
   createdAt    DateTime @default(now()) @map("created_at")
 
-  memberships  Membership[]
-  coachProfile CoachProfile?
-  students     Student[]     @relation("PrimaryCoach")
+  memberships    Membership[]
+  coachProfile   CoachProfile?
+  students       Student[]     @relation("PrimaryCoach")
+  studentProfile Student?      @relation("StudentIdentity")
   approvals    Approval[]    @relation("Approver")
   feedback     Feedback[]
 
@@ -89,6 +90,7 @@ model Membership {
 model Student {
   id                 String   @id @default(uuid())
   orgId              String   @map("org_id")
+  userId             String?  @unique @map("user_id")
   primaryCoachUserId String?  @map("primary_coach_user_id")
   stage              String   @default("onboarding")
   motivationScore    Float?   @map("motivation_score")
@@ -98,6 +100,7 @@ model Student {
   createdAt          DateTime @default(now()) @map("created_at")
 
   organization Organization @relation(fields: [orgId], references: [id])
+  user         User?        @relation("StudentIdentity", fields: [userId], references: [id])
   primaryCoach User?        @relation("PrimaryCoach", fields: [primaryCoachUserId], references: [id])
   submissions  Submission[]
 

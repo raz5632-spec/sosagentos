@@ -152,6 +152,22 @@ describe("KNO-002 semantic search + graph e2e", () => {
     token = login.body.token;
     orgId = login.body.organizations[0].orgId;
 
+    // Idempotency: remove items left behind by previous runs of this suite.
+    const db = getDb();
+    const stale = await db.knowledgeItem.findMany({
+      where: { orgId, title: { in: ["Handling price objections", "Pasta cooking basics"] } },
+      select: { id: true },
+    });
+    const staleIds = stale.map((s) => s.id);
+    if (staleIds.length) {
+      await db.knowledgeEdge.deleteMany({ where: { OR: [{ fromItemId: { in: staleIds } }, { toItemId: { in: staleIds } }] } });
+      await db.knowledgeChunk.deleteMany({ where: { knowledgeItemId: { in: staleIds } } });
+      await db.knowledgeItem.updateMany({ where: { id: { in: staleIds } }, data: { currentVersionId: null } });
+      await db.knowledgeVersion.deleteMany({ where: { knowledgeItemId: { in: staleIds } } });
+      await db.approval.deleteMany({ where: { subjectType: "knowledge_item", subjectId: { in: staleIds } } });
+      await db.knowledgeItem.deleteMany({ where: { id: { in: staleIds } } });
+    }
+
     const capture = async (title: string, content: string) => {
       const res = await request(app.getHttpServer())
         .post(`/orgs/${orgId}/knowledge`)
@@ -181,7 +197,13 @@ describe("KNO-002 semantic search + graph e2e", () => {
 
   afterAll(async () => {
     const db = getDb();
-    await db.knowledgeEdge.deleteMany({ where: { fromItemId: { in: [salesItemId, cookingItemId] } } });
+    const ids = [salesItemId, cookingItemId].filter(Boolean);
+    await db.knowledgeEdge.deleteMany({ where: { OR: [{ fromItemId: { in: ids } }, { toItemId: { in: ids } }] } });
+    await db.knowledgeChunk.deleteMany({ where: { knowledgeItemId: { in: ids } } });
+    await db.knowledgeItem.updateMany({ where: { id: { in: ids } }, data: { currentVersionId: null } });
+    await db.knowledgeVersion.deleteMany({ where: { knowledgeItemId: { in: ids } } });
+    await db.approval.deleteMany({ where: { subjectType: "knowledge_item", subjectId: { in: ids } } });
+    await db.knowledgeItem.deleteMany({ where: { id: { in: ids } } });
     await app.close();
   });
 
