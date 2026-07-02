@@ -62,6 +62,11 @@ export class AgentsService {
     );
   }
 
+  /** Re-dispatch a parked ACP message after human approval. */
+  dispatchApproved(msg: unknown, taskClass: TaskClass, traceId?: string) {
+    return this.runtime.dispatch(msg, { approved: true, taskClass, traceId });
+  }
+
   async listInvocations(limit = 50) {
     const rows = await getDb().modelInvocation.findMany({
       orderBy: { createdAt: "desc" },

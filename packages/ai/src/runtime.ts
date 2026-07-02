@@ -32,17 +32,28 @@ export class AgentRuntime {
     if (msg.approvalLevel === "L4") {
       // Recommend-only agents never execute externally; they still may produce a memo.
     } else if (needsApproval && !opts.approved) {
+      // Park the full message as a pending Approval so it can be re-dispatched on approval.
+      const approval = await db.approval.create({
+        data: {
+          orgId: msg.tenantId,
+          subjectType: "acp_message",
+          subjectId: msg.messageId,
+          requestedBy: msg.requestedBy,
+          status: "pending",
+          payloadJson: { message: msg, taskClass: opts.taskClass ?? "default" } as object,
+        },
+      });
       await writeAudit({
         orgId: msg.tenantId,
         actorType: "agent",
         actorId: agent.code,
         action: "acp.awaiting_approval",
-        subjectType: "acp_message",
-        subjectId: msg.messageId,
+        subjectType: "approval",
+        subjectId: approval.id,
         traceId: opts.traceId,
         payload: { objective: msg.objective, approvalLevel: msg.approvalLevel },
       });
-      return { ...msg, status: "awaiting_approval" };
+      return { ...msg, status: "awaiting_approval", nextAction: `approval:${approval.id}` };
     }
 
     const startedAt = new Date().toISOString();
