@@ -6,7 +6,7 @@
   "scripts": {
     "build": "prisma generate",
     "lint": "echo 'db: no lint yet'",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "prisma generate && tsc --noEmit",
     "test": "echo 'db: no tests yet'",
     "migrate:dev": "prisma migrate dev",
     "migrate:deploy": "prisma migrate deploy",
