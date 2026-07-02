@@ -12,6 +12,6 @@
 | IAM-001 Organizations, users, roles, memberships, tenant guards | next | NestJS api app + auth + tenant guards |
 
 ## Blockers / external actions (owner: CEO)
-- GitHub token needs `workflow` scope so CI can be committed (then move docs/30-ops/ci-workflow-pending.yml → .github/workflows/ci.yml)
+- ~~GitHub token workflow scope~~ resolved 2026-07-02: new token installed, CI restored to .github/workflows/ci.yml
 - Anthropic API key received 2026-07-02 (stored in local .env only) — **recommend rotating it**, since it was shared in chat
 - Still open: cloud account, domain, OpenAI/Gemini keys — see external-actions.md
