@@ -1,5 +1,6 @@
 {
   "$schema": "https://turbo.build/schema.json",
+  "globalPassThroughEnv": ["DATABASE_URL", "REDIS_URL", "JWT_SECRET", "SEED_ADMIN_PASSWORD"],
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
