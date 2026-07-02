@@ -4,10 +4,11 @@ import { OrgsModule } from "./orgs/orgs.module.js";
 import { AgentsModule } from "./agents/agents.module.js";
 import { ApprovalsModule } from "./approvals/approvals.module.js";
 import { KnowledgeModule } from "./knowledge/knowledge.module.js";
+import { DnaModule } from "./dna/dna.module.js";
 import { HealthController } from "./health.controller.js";
 
 @Module({
-  imports: [AuthModule, OrgsModule, AgentsModule, ApprovalsModule, KnowledgeModule],
+  imports: [AuthModule, OrgsModule, AgentsModule, ApprovalsModule, KnowledgeModule, DnaModule],
   controllers: [HealthController],
 })
 export class AppModule {}
