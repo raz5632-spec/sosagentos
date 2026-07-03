@@ -11,6 +11,7 @@ import { ContentModule } from "./content/content.module.js";
 import { AnalyticsModule } from "./analytics/analytics.module.js";
 import { CompetitorsModule } from "./competitors/competitors.module.js";
 import { SimulationsModule } from "./simulations/simulations.module.js";
+import { WorkflowsModule } from "./workflows/workflows.module.js";
 import { HealthController } from "./health.controller.js";
 
 @Module({
@@ -27,6 +28,7 @@ import { HealthController } from "./health.controller.js";
     AnalyticsModule,
     CompetitorsModule,
     SimulationsModule,
+    WorkflowsModule,
   ],
   controllers: [HealthController],
 })
