@@ -2,9 +2,9 @@
   "name": "@salesos/db",
   "version": "0.1.0",
   "private": true,
-  "main": "src/index.ts",
+  "main": "dist/src/index.js",
   "scripts": {
-    "build": "prisma generate",
+    "build": "prisma generate && tsc -p tsconfig.json",
     "lint": "echo 'db: no lint yet'",
     "typecheck": "prisma generate && tsc --noEmit",
     "test": "echo 'db: no tests yet'",
@@ -25,5 +25,6 @@
     "prisma": "^6.2.0",
     "tsx": "^4.19.0",
     "typescript": "^5.7.0"
-  }
+  },
+  "types": "dist/src/index.d.ts"
 }

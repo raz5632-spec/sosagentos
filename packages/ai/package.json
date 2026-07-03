@@ -2,7 +2,7 @@
   "name": "@salesos/ai",
   "version": "0.1.0",
   "private": true,
-  "main": "src/index.ts",
+  "main": "dist/src/index.js",
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "lint": "echo 'ai: no lint yet'",
@@ -19,5 +19,6 @@
     "tsx": "^4.19.0",
     "typescript": "^5.7.0",
     "vitest": "^3.0.0"
-  }
+  },
+  "types": "dist/src/index.d.ts"
 }
