@@ -17,8 +17,8 @@
 | 13 | INT-GGL-001 | Google OAuth + Drive/Gmail/Calendar connectors | High | 8d | IAM-001 | pending |
 | 14 | INT-CANVA-001 | Canva integration + design brief/export path | High | 8d | CNT-001 | pending |
 | 15 | ANA-001 | KPI snapshots + CEO dashboard | High | 7d | DAT-001 | **done** (API; frontend workspace later) |
-| 16 | SIM-001 | Digital Twin scenario service | Medium-high | 8d | ANA-001, STD-001 | pending |
-| 17 | CMP-001 | Competitor observation pipeline | Medium-high | 6d | KNO-002 | pending |
+| 16 | SIM-001 | Digital Twin scenario service | Medium-high | 8d | ANA-001, STD-001 | **next** |
+| 17 | CMP-001 | Competitor observation pipeline | Medium-high | 6d | KNO-002 | **done** |
 | 18 | AUT-001 | Workflow runtime on Temporal + notifications | High | 8d | AGT-001 | pending |
 | 19 | OPS-001 | Staging/prod, monitoring, backups, runbooks | High | 7d | FND-001 onward | pending |
 | 20 | LCH-001 | Launch hardening, App Review evidence, UAT | Critical before release | 10d | Most above | pending |

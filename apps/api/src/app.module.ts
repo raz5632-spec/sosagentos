@@ -9,6 +9,7 @@ import { EducationModule } from "./education/education.module.js";
 import { StudentsModule } from "./students/students.module.js";
 import { ContentModule } from "./content/content.module.js";
 import { AnalyticsModule } from "./analytics/analytics.module.js";
+import { CompetitorsModule } from "./competitors/competitors.module.js";
 import { HealthController } from "./health.controller.js";
 
 @Module({
@@ -23,6 +24,7 @@ import { HealthController } from "./health.controller.js";
     StudentsModule,
     ContentModule,
     AnalyticsModule,
+    CompetitorsModule,
   ],
   controllers: [HealthController],
 })
