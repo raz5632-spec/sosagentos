@@ -12,11 +12,11 @@
 | 8 | DNA-001 | Organizational DNA Engine + brand rules evaluation | High | 4d | KNO-001 | **done** |
 | 9 | EDU-001 | Course / lesson / transcript pipeline | High | 7d | DAT-001 | **done** (text transcripts v1; recording/STT adapters later) |
 | 10 | STD-001 | Student timeline + risk profiling + coach actions | High | 8d | EDU-001, KNO-002 | **done** |
-| 11 | CNT-001 | Content brief → draft → QA → approval workflow | High | 8d | DNA-001, GOV-001 | **next** |
+| 11 | CNT-001 | Content brief → draft → QA → approval workflow | High | 8d | DNA-001, GOV-001 | **done** |
 | 12 | INT-META-001 | Meta app, WhatsApp webhooks, token storage | High | 10d | GOV-001, IAM-001 | pending |
 | 13 | INT-GGL-001 | Google OAuth + Drive/Gmail/Calendar connectors | High | 8d | IAM-001 | pending |
 | 14 | INT-CANVA-001 | Canva integration + design brief/export path | High | 8d | CNT-001 | pending |
-| 15 | ANA-001 | KPI snapshots + CEO dashboard | High | 7d | DAT-001 | pending |
+| 15 | ANA-001 | KPI snapshots + CEO dashboard | High | 7d | DAT-001 | **next** |
 | 16 | SIM-001 | Digital Twin scenario service | Medium-high | 8d | ANA-001, STD-001 | pending |
 | 17 | CMP-001 | Competitor observation pipeline | Medium-high | 6d | KNO-002 | pending |
 | 18 | AUT-001 | Workflow runtime on Temporal + notifications | High | 8d | AGT-001 | pending |

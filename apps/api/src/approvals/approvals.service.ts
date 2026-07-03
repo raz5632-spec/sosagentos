@@ -9,12 +9,14 @@ import { AcpMessage } from "@salesos/contracts";
 import type { TaskClass } from "@salesos/ai";
 import { AgentsService } from "../agents/agents.service.js";
 import { KnowledgeService } from "../knowledge/knowledge.service.js";
+import { ContentService } from "../content/content.service.js";
 
 @Injectable()
 export class ApprovalsService {
   constructor(
     private readonly agents: AgentsService,
     private readonly knowledge: KnowledgeService,
+    private readonly content: ContentService,
   ) {}
 
   async list(orgId: string, status = "pending") {
@@ -80,6 +82,8 @@ export class ApprovalsService {
       }
       case "knowledge_item":
         return this.knowledge.promote(orgId, approval.subjectId, approverUserId, traceId);
+      case "content_asset":
+        return this.content.approveAsset(orgId, approval.subjectId, approverUserId, traceId);
       default:
         throw new BadRequestException(`unsupported approval subject: ${approval.subjectType}`);
     }
@@ -114,6 +118,9 @@ export class ApprovalsService {
     });
     if (approval.subjectType === "knowledge_item") {
       await this.knowledge.demote(orgId, approval.subjectId, traceId);
+    }
+    if (approval.subjectType === "content_asset") {
+      await this.content.demoteAsset(orgId, approval.subjectId);
     }
     return { id: approval.id, status: "rejected", reason: reason ?? null };
   }

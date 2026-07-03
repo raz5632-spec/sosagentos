@@ -7,6 +7,7 @@ import { KnowledgeModule } from "./knowledge/knowledge.module.js";
 import { DnaModule } from "./dna/dna.module.js";
 import { EducationModule } from "./education/education.module.js";
 import { StudentsModule } from "./students/students.module.js";
+import { ContentModule } from "./content/content.module.js";
 import { HealthController } from "./health.controller.js";
 
 @Module({
@@ -19,6 +20,7 @@ import { HealthController } from "./health.controller.js";
     DnaModule,
     EducationModule,
     StudentsModule,
+    ContentModule,
   ],
   controllers: [HealthController],
 })
