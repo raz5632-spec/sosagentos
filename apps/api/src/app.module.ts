@@ -10,6 +10,7 @@ import { StudentsModule } from "./students/students.module.js";
 import { ContentModule } from "./content/content.module.js";
 import { AnalyticsModule } from "./analytics/analytics.module.js";
 import { CompetitorsModule } from "./competitors/competitors.module.js";
+import { SimulationsModule } from "./simulations/simulations.module.js";
 import { HealthController } from "./health.controller.js";
 
 @Module({
@@ -25,6 +26,7 @@ import { HealthController } from "./health.controller.js";
     ContentModule,
     AnalyticsModule,
     CompetitorsModule,
+    SimulationsModule,
   ],
   controllers: [HealthController],
 })
