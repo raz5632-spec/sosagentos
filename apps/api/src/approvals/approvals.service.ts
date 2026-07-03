@@ -10,6 +10,7 @@ import type { TaskClass } from "@salesos/ai";
 import { AgentsService } from "../agents/agents.service.js";
 import { KnowledgeService } from "../knowledge/knowledge.service.js";
 import { ContentService } from "../content/content.service.js";
+import { WhatsAppService } from "../integrations/meta/whatsapp.service.js";
 
 @Injectable()
 export class ApprovalsService {
@@ -17,6 +18,7 @@ export class ApprovalsService {
     private readonly agents: AgentsService,
     private readonly knowledge: KnowledgeService,
     private readonly content: ContentService,
+    private readonly whatsapp: WhatsAppService,
   ) {}
 
   async list(orgId: string, status = "pending") {
@@ -84,6 +86,11 @@ export class ApprovalsService {
         return this.knowledge.promote(orgId, approval.subjectId, approverUserId, traceId);
       case "content_asset":
         return this.content.approveAsset(orgId, approval.subjectId, approverUserId, traceId);
+      case "whatsapp_message": {
+        const p = approval.payloadJson as { to?: string; text?: string } | null;
+        if (!p?.to || !p?.text) throw new BadRequestException("approval has no message payload");
+        return this.whatsapp.executeSend(orgId, p.to, p.text, traceId);
+      }
       default:
         throw new BadRequestException(`unsupported approval subject: ${approval.subjectType}`);
     }

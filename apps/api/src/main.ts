@@ -4,7 +4,7 @@ import { AppModule } from "./app.module.js";
 import { traceMiddleware } from "./common/trace.middleware.js";
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create(AppModule, { rawBody: true });
   app.enableCors({ origin: process.env.WEB_ORIGIN ?? "http://localhost:3000" });
   app.use(traceMiddleware());
   const port = Number(process.env.PORT ?? 3001);
