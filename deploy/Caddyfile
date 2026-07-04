@@ -1,0 +1,7 @@
+app.secretofsaleschat.org {
+	reverse_proxy web:3000
+}
+
+api.secretofsaleschat.org {
+	reverse_proxy api:3011
+}

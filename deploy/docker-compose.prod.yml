@@ -1,0 +1,74 @@
+# Production compose for the staging EC2 host. Secrets come from /opt/salesos/.env.
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: salesos
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: salesos
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U salesos"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  api:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+      target: api
+      args:
+        NEXT_PUBLIC_API_URL: https://api.secretofsaleschat.org
+    restart: unless-stopped
+    env_file: /opt/salesos/.env
+    environment:
+      PORT: "3011"
+      WEB_ORIGIN: https://app.secretofsaleschat.org
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  migrate:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+      target: api
+      args:
+        NEXT_PUBLIC_API_URL: https://api.secretofsaleschat.org
+    env_file: /opt/salesos/.env
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: sh -c "pnpm --filter @salesos/db migrate:deploy && pnpm --filter @salesos/db seed"
+    restart: "no"
+
+  web:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+      target: web
+      args:
+        NEXT_PUBLIC_API_URL: https://api.secretofsaleschat.org
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - api
+      - web
+
+volumes:
+  pgdata:
+  caddy_data:
+  caddy_config:
