@@ -4,6 +4,7 @@ import { AgentsService } from "../../agents/agents.service.js";
 import { DnaService } from "../../dna/dna.service.js";
 import { KnowledgeService } from "../../knowledge/knowledge.service.js";
 import { AnalyticsService } from "../../analytics/analytics.service.js";
+import { ContentService } from "../../content/content.service.js";
 
 const GRAPH_URL = "https://graph.facebook.com/v21.0";
 
@@ -26,6 +27,7 @@ export class WhatsAppService {
     private readonly dna: DnaService,
     private readonly knowledge: KnowledgeService,
     private readonly analytics: AnalyticsService,
+    private readonly content: ContentService,
   ) {}
 
   /** Single-tenant v1: all webhook traffic maps to the sos org. */
@@ -232,6 +234,90 @@ export class WhatsAppService {
   }
 
   /**
+   * CEO channel: classify the message as chat / content command / report, then
+   * either answer directly (KPI-grounded, ungated) or run a work command
+   * (e.g. produce a content draft) and report back. Publications stay gated.
+   */
+  private async ceoTurn(
+    orgId: string,
+    msg: NormalizedWhatsAppMessage,
+    historyText: string,
+    kpiBlock: string,
+    knowledgeBlock: string,
+    traceId?: string,
+  ) {
+    const result = await this.agents.invoke(
+      orgId,
+      "whatsapp_bot",
+      {
+        agentCode: "ceo_interface",
+        approvalLevel: "L1",
+        objective:
+          "You are the personal executive assistant of Raz, CEO of S.O.S. sales coaching — this " +
+          "message is from Raz himself. Classify his intent and respond in Hebrew. Intents: " +
+          '"chat" (questions, reports, status — answer directly using the live KPIs when relevant); ' +
+          '"content" (he wants a post/carousel/story/script produced — extract a short topic). ' +
+          "Never invent capabilities: Canva rendering and Instagram posting are not connected yet, " +
+          "so for content say the text draft will be prepared and returned for approval. " +
+          'Return STRICT JSON only: {"intent":"chat|content","topic":"<if content>","reply":"<hebrew message to send now>"}.',
+        context: `CONVERSATION SO FAR:\n${historyText}\n\nLATEST MESSAGE:\n${msg.text}${kpiBlock}${knowledgeBlock}`,
+        budgetTokens: 1500,
+      },
+      traceId,
+    );
+    const raw = ((result.output as { text?: string })?.text ?? "").trim();
+    let intent = "chat";
+    let topic = "";
+    let reply = raw;
+    try {
+      const parsed = JSON.parse(raw.slice(raw.indexOf("{"), raw.lastIndexOf("}") + 1)) as {
+        intent?: string;
+        topic?: string;
+        reply?: string;
+      };
+      if (parsed.reply) reply = parsed.reply;
+      if (parsed.intent) intent = parsed.intent;
+      if (parsed.topic) topic = parsed.topic;
+    } catch {
+      /* fall back to raw as chat */
+    }
+
+    // Content command → run the content engine (brief → copy draft + DNA QA).
+    if (intent === "content" && topic) {
+      try {
+        const brief = await this.content.createBrief(
+          orgId,
+          "whatsapp_bot",
+          {
+            title: `WhatsApp: ${topic}`.slice(0, 120),
+            type: "carousel",
+            targetChannel: "instagram",
+            brief: `CEO requested via WhatsApp: ${msg.text}. Topic: ${topic}.`,
+          },
+          traceId,
+        );
+        const draft = await this.content.draft(orgId, brief.id, "whatsapp_bot", traceId);
+        const preview = (draft.draft ?? "").slice(0, 900);
+        reply =
+          `הכנתי טיוטת תוכן על "${topic}" ✍️\n\n${preview}\n\n` +
+          `נשמרה בצנרת התוכן (בדיקת מותג: ${draft.qaStatus}). ` +
+          `כשנחבר את Canva אוכל להפוך את זה לעיצוב מוכן, וכשנחבר אינסטגרם — לתזמן העלאה. ` +
+          `בינתיים אפשר לאשר/לתקן בקונסולה.`;
+      } catch (err) {
+        reply = `רציתי להכין את התוכן אבל נתקלתי בבעיה: ${String(err)}. אפשר לנסות שוב או להכין בקונסולה.`;
+      }
+    }
+
+    const text = reply || "(אין תשובה)";
+    try {
+      return await this.executeSend(orgId, msg.from, text, traceId);
+    } catch {
+      // If sending isn't configured, don't lose the work — park it.
+      return this.parkReply(orgId, msg.from, text, "send_failed", traceId);
+    }
+  }
+
+  /**
    * Option-A autonomy: draft a reply via the communications agent; auto-send
    * unless the agent flags it sensitive, DNA fails it, or the send fails.
    */
@@ -264,14 +350,12 @@ export class WhatsAppService {
       }
     }
 
-    const objective = isCeo
-      ? "You are the personal executive assistant of Raz, CEO of S.O.S. sales coaching — this message " +
-        "is from Raz himself on the CEO channel. Answer in Hebrew, direct and data-grounded, using the " +
-        "live KPIs when relevant. You can report on students, approvals, costs, content and competitors. " +
-        "If asked to produce deliverables you cannot yet execute (e.g. Canva designs, Instagram posts), " +
-        "say exactly what is possible today and what is pending integration — never pretend. " +
-        'Return STRICT JSON only: {"reply":"...","sensitive":false}.'
-      : "You are the S.O.S. sales-coaching WhatsApp assistant. Draft a warm, concise reply " +
+    if (isCeo) {
+      return this.ceoTurn(orgId, msg, historyText, kpiBlock, knowledgeBlock, traceId);
+    }
+
+    const objective =
+      "You are the S.O.S. sales-coaching WhatsApp assistant. Draft a warm, concise reply " +
         "in the sender's language (usually Hebrew). You may answer operational questions " +
         "(courses, schedules, how the program works, general guidance). Mark sensitive=true " +
         "for anything about pricing, discounts, refunds, complaints, personal coaching decisions, " +
@@ -282,11 +366,11 @@ export class WhatsAppService {
       orgId,
       "whatsapp_bot",
       {
-        agentCode: isCeo ? "ceo_interface" : "communications",
+        agentCode: "communications",
         approvalLevel: "L1",
         objective,
         context: `CONVERSATION SO FAR (sender ${msg.from}):\n${historyText}\n\nLATEST MESSAGE:\n${msg.text}${knowledgeBlock}${kpiBlock}`,
-        budgetTokens: isCeo ? 1500 : 800,
+        budgetTokens: 800,
       },
       traceId,
     );
@@ -305,16 +389,6 @@ export class WhatsAppService {
       }
     } catch {
       // keep safe default
-    }
-    if (isCeo) {
-      // CEO channel: no sensitivity gate and no DNA gate — send whatever was drafted.
-      const text = reply ?? raw;
-      if (!text) return this.parkReply(orgId, msg.from, "(no draft)", "unparseable_draft", traceId);
-      try {
-        return await this.executeSend(orgId, msg.from, text, traceId);
-      } catch {
-        return this.parkReply(orgId, msg.from, text, "send_failed", traceId);
-      }
     }
 
     if (!reply) return this.parkReply(orgId, msg.from, raw || "(no draft)", "unparseable_draft", traceId);
