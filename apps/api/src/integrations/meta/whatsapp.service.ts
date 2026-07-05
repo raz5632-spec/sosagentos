@@ -5,6 +5,7 @@ import { DnaService } from "../../dna/dna.service.js";
 import { KnowledgeService } from "../../knowledge/knowledge.service.js";
 import { AnalyticsService } from "../../analytics/analytics.service.js";
 import { ContentService } from "../../content/content.service.js";
+import { CanvaService } from "../canva/canva.service.js";
 
 const GRAPH_URL = "https://graph.facebook.com/v21.0";
 
@@ -28,6 +29,7 @@ export class WhatsAppService {
     private readonly knowledge: KnowledgeService,
     private readonly analytics: AnalyticsService,
     private readonly content: ContentService,
+    private readonly canva: CanvaService,
   ) {}
 
   /** Single-tenant v1: all webhook traffic maps to the sos org. */
@@ -246,6 +248,21 @@ export class WhatsAppService {
     knowledgeBlock: string,
     traceId?: string,
   ) {
+    // A weekly/competitor report request gets the full dashboard digest as context.
+    let reportBlock = "";
+    if (/דוח|דו"ח|שבוע|סיכום|מה הלך|report|מתחר/i.test(msg.text ?? "")) {
+      try {
+        const dash = await this.analytics.dashboard(orgId);
+        reportBlock = `\n\nFULL DASHBOARD DIGEST:\n${JSON.stringify({
+          kpis: dash.kpis,
+          pendingApprovals: dash.pendingApprovals.length,
+          recentAi: dash.recentAiActivity.slice(0, 5),
+        })}`;
+      } catch {
+        /* optional */
+      }
+    }
+
     const result = await this.agents.invoke(
       orgId,
       "whatsapp_bot",
@@ -255,13 +272,17 @@ export class WhatsAppService {
         objective:
           "You are the personal executive assistant of Raz, CEO of S.O.S. sales coaching — this " +
           "message is from Raz himself. Classify his intent and respond in Hebrew. Intents: " +
-          '"chat" (questions, reports, status — answer directly using the live KPIs when relevant); ' +
+          '"chat" (a quick question/status — answer directly using the live KPIs); ' +
+          '"report" (he wants a weekly/competitor/summary report — write a clear, structured ' +
+          "digest from the DASHBOARD DIGEST: students & at-risk, approvals pending, content pipeline, " +
+          "knowledge, AI cost, and what stands out; be honest that competitor/social data is limited " +
+          'until those pipelines have data); ' +
           '"content" (he wants a post/carousel/story/script produced — extract a short topic). ' +
           "Never invent capabilities: Canva rendering and Instagram posting are not connected yet, " +
           "so for content say the text draft will be prepared and returned for approval. " +
-          'Return STRICT JSON only: {"intent":"chat|content","topic":"<if content>","reply":"<hebrew message to send now>"}.',
-        context: `CONVERSATION SO FAR:\n${historyText}\n\nLATEST MESSAGE:\n${msg.text}${kpiBlock}${knowledgeBlock}`,
-        budgetTokens: 1500,
+          'Return STRICT JSON only: {"intent":"chat|report|content","topic":"<if content>","reply":"<hebrew message to send now>"}.',
+        context: `CONVERSATION SO FAR:\n${historyText}\n\nLATEST MESSAGE:\n${msg.text}${kpiBlock}${reportBlock}${knowledgeBlock}`,
+        budgetTokens: 2000,
       },
       traceId,
     );
@@ -297,12 +318,24 @@ export class WhatsAppService {
           traceId,
         );
         const draft = await this.content.draft(orgId, brief.id, "whatsapp_bot", traceId);
-        const preview = (draft.draft ?? "").slice(0, 900);
+        const preview = (draft.draft ?? "").slice(0, 800);
+
+        // If Canva is connected, seed a design and hand back the edit link.
+        let canvaLine =
+          "כשנחבר את Canva אוכל להפוך את זה לעיצוב מוכן, וכשנחבר אינסטגרם — לתזמן העלאה.";
+        try {
+          const design = await this.canva.designFromContent(orgId, brief.id, traceId);
+          if (design.connected && design.editUrl) {
+            canvaLine = `הכנתי גם עיצוב מוכן ב-Canva — לחץ לערוך/לייצא:\n${design.editUrl}`;
+          }
+        } catch {
+          /* Canva is optional; the text draft is the deliverable */
+        }
+
         reply =
           `הכנתי טיוטת תוכן על "${topic}" ✍️\n\n${preview}\n\n` +
-          `נשמרה בצנרת התוכן (בדיקת מותג: ${draft.qaStatus}). ` +
-          `כשנחבר את Canva אוכל להפוך את זה לעיצוב מוכן, וכשנחבר אינסטגרם — לתזמן העלאה. ` +
-          `בינתיים אפשר לאשר/לתקן בקונסולה.`;
+          `נשמרה בצנרת התוכן (בדיקת מותג: ${draft.qaStatus}). ${canvaLine} ` +
+          `אפשר לאשר/לתקן בקונסולה.`;
       } catch (err) {
         reply = `רציתי להכין את התוכן אבל נתקלתי בבעיה: ${String(err)}. אפשר לנסות שוב או להכין בקונסולה.`;
       }

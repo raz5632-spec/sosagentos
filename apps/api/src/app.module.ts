@@ -13,6 +13,7 @@ import { CompetitorsModule } from "./competitors/competitors.module.js";
 import { SimulationsModule } from "./simulations/simulations.module.js";
 import { WorkflowsModule } from "./workflows/workflows.module.js";
 import { WhatsAppModule } from "./integrations/meta/whatsapp.module.js";
+import { CanvaModule } from "./integrations/canva/canva.module.js";
 import { HealthController } from "./health.controller.js";
 
 @Module({
@@ -31,6 +32,7 @@ import { HealthController } from "./health.controller.js";
     SimulationsModule,
     WorkflowsModule,
     WhatsAppModule,
+    CanvaModule,
   ],
   controllers: [HealthController],
 })
