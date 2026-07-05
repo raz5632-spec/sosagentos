@@ -15,22 +15,25 @@ rsync -az --delete -e "ssh -i $KEY -o StrictHostKeyChecking=accept-new" \
 echo "==> 2/5 preparing server secrets (/opt/salesos/.env)..."
 get() { grep "^$1=" .env | cut -d= -f2-; }
 if $SSH 'test -s /opt/salesos/.env'; then
-  echo "    server .env already exists — keeping it"
+  echo "    server .env exists — upserting provider keys from local .env"
 else
   PGPASS=$(openssl rand -hex 16)
   $SSH "cat > /opt/salesos/.env && chmod 600 /opt/salesos/.env" <<EOF
 DATABASE_URL=postgresql://salesos:$PGPASS@postgres:5432/salesos
 POSTGRES_PASSWORD=$PGPASS
 JWT_SECRET=$(openssl rand -hex 32)
-ANTHROPIC_API_KEY=$(get ANTHROPIC_API_KEY)
-META_APP_ID=$(get META_APP_ID)
-META_APP_SECRET=$(get META_APP_SECRET)
-META_WEBHOOK_VERIFY_TOKEN=$(get META_WEBHOOK_VERIFY_TOKEN)
-WHATSAPP_PHONE_NUMBER_ID=$(get WHATSAPP_PHONE_NUMBER_ID)
-WHATSAPP_ACCESS_TOKEN=$(get WHATSAPP_ACCESS_TOKEN)
 SEED_ADMIN_PASSWORD=$(get SEED_ADMIN_PASSWORD)
 EOF
 fi
+# Upsert integration/provider keys from the local .env on every deploy so new
+# credentials (Canva, Google, Meta, CEO number) propagate to the host.
+for K in ANTHROPIC_API_KEY META_APP_ID META_APP_SECRET META_WEBHOOK_VERIFY_TOKEN \
+         WHATSAPP_PHONE_NUMBER_ID WHATSAPP_ACCESS_TOKEN CEO_WHATSAPP_NUMBER \
+         CANVA_CLIENT_ID CANVA_CLIENT_SECRET CANVA_REDIRECT \
+         GOOGLE_OAUTH_CLIENT_ID GOOGLE_OAUTH_CLIENT_SECRET GOOGLE_OAUTH_REDIRECT; do
+  V=$(get "$K"); [ -z "$V" ] && continue
+  $SSH "grep -q '^$K=' /opt/salesos/.env && sed -i 's|^$K=.*|$K=$V|' /opt/salesos/.env || echo '$K=$V' >> /opt/salesos/.env"
+done
 
 echo "==> 3/5 building containers (first time takes ~5-10 min)..."
 $SSH 'cd /opt/salesos/app && sudo docker compose --env-file /opt/salesos/.env -f deploy/docker-compose.prod.yml build'
