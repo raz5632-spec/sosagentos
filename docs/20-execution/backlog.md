@@ -13,14 +13,14 @@
 | 9 | EDU-001 | Course / lesson / transcript pipeline | High | 7d | DAT-001 | **done** (text transcripts v1; recording/STT adapters later) |
 | 10 | STD-001 | Student timeline + risk profiling + coach actions | High | 8d | EDU-001, KNO-002 | **done** |
 | 11 | CNT-001 | Content brief → draft → QA → approval workflow | High | 8d | DNA-001, GOV-001 | **done** |
-| 12 | INT-META-001 | Meta app, WhatsApp webhooks, token storage | High | 10d | GOV-001, IAM-001 | **in_progress** (code done: verified webhook handshake, HMAC signature validation, idempotent ingestion, L3-gated sends; awaiting phone_number_id + access token + public HTTPS URL) |
+| 12 | INT-META-001 | Meta app, WhatsApp webhooks, token storage | High | 10d | GOV-001, IAM-001 | **done** (live on prod incl. conversation bot INT-META-002; dedicated business number pending purchase) |
 | 13 | INT-GGL-001 | Google OAuth + Drive/Gmail/Calendar connectors | High | 8d | IAM-001 | pending |
 | 14 | INT-CANVA-001 | Canva integration + design brief/export path | High | 8d | CNT-001 | pending |
 | 15 | ANA-001 | KPI snapshots + CEO dashboard | High | 7d | DAT-001 | **done** (API; frontend workspace later) |
 | 16 | SIM-001 | Digital Twin scenario service | Medium-high | 8d | ANA-001, STD-001 | **done** |
 | 17 | CMP-001 | Competitor observation pipeline | Medium-high | 6d | KNO-002 | **done** |
 | 18 | AUT-001 | Workflow runtime on Temporal + notifications | High | 8d | AGT-001 | **done** (DB-backed runner v1 per ADR-2026-07-03; Temporal re-evaluated at OPS-001) |
-| 19 | OPS-001 | Staging/prod, monitoring, backups, runbooks | High | 7d | FND-001 onward | pending |
+| 19 | OPS-001 | Staging/prod, monitoring, backups, runbooks | High | 7d | FND-001 onward | **in_progress** (EC2+compose live at app/api.secretofsaleschat.org per ADR-2026-07-04; backups/monitoring pending) |
 | 20 | LCH-001 | Launch hardening, App Review evidence, UAT | Critical before release | 10d | Most above | pending |
 
 | 21 | FRN-001 | CEO console web app (added 2026-07-03 — frontend absent from original backlog) | High | 10d | ANA-001, GOV-001 | **done** (v1: login, KPI dashboard, approvals inbox, agent console) |

@@ -106,6 +106,17 @@ describe("INT-META-001 WhatsApp webhook + gated send e2e", () => {
     expect(event).toBeTruthy();
   });
 
+  it("bot drafted a reply and parked it for approval (FakeProvider → safe default)", async () => {
+    // FakeProvider returns non-JSON, so the bot's safe default is sensitive=true → approval.
+    const approval = await getDb().approval.findFirst({
+      where: { subjectType: "whatsapp_message", subjectId: "972500000000", status: "pending" },
+      orderBy: { createdAt: "desc" },
+    });
+    expect(approval).toBeTruthy();
+    const payload = approval?.payloadJson as { reason?: string; text?: string };
+    expect(payload.reason).toBe("unparseable_draft");
+  });
+
   it("duplicate replay is idempotent", async () => {
     const body = JSON.stringify(WEBHOOK_PAYLOAD);
     const res = await request(app.getHttpServer())
