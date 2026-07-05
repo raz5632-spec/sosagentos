@@ -2,6 +2,8 @@ import { BadRequestException, Injectable } from "@nestjs/common";
 import { getDb, writeAudit } from "@salesos/db";
 import { AgentsService } from "../../agents/agents.service.js";
 import { DnaService } from "../../dna/dna.service.js";
+import { KnowledgeService } from "../../knowledge/knowledge.service.js";
+import { AnalyticsService } from "../../analytics/analytics.service.js";
 
 const GRAPH_URL = "https://graph.facebook.com/v21.0";
 
@@ -22,6 +24,8 @@ export class WhatsAppService {
   constructor(
     private readonly agents: AgentsService,
     private readonly dna: DnaService,
+    private readonly knowledge: KnowledgeService,
+    private readonly analytics: AnalyticsService,
   ) {}
 
   /** Single-tenant v1: all webhook traffic maps to the sos org. */
@@ -235,22 +239,54 @@ export class WhatsAppService {
     const { endpoint } = await this.ensureConnection(orgId);
     const history = await this.history(endpoint.id, msg.from);
     const historyText = history.map((h) => `- ${h.text}`).join("\n");
+    const isCeo = !!process.env.CEO_WHATSAPP_NUMBER && msg.from === process.env.CEO_WHATSAPP_NUMBER;
+
+    // Ground replies in approved knowledge (RAG over production items).
+    let knowledgeBlock = "";
+    try {
+      const hits = await this.knowledge.search(orgId, msg.text ?? "", { status: "production", limit: 3 });
+      if (hits.length) {
+        knowledgeBlock =
+          "\n\nAPPROVED S.O.S. KNOWLEDGE (base your answer on this when relevant):\n" +
+          hits.map((h) => `[${h.title}] ${h.snippet}`).join("\n");
+      }
+    } catch {
+      // knowledge is an enhancement, never a blocker
+    }
+
+    let kpiBlock = "";
+    if (isCeo) {
+      try {
+        const kpis = await this.analytics.computeKpis(orgId);
+        kpiBlock = `\n\nLIVE PLATFORM KPIS: ${JSON.stringify(kpis)}`;
+      } catch {
+        /* optional context */
+      }
+    }
+
+    const objective = isCeo
+      ? "You are the personal executive assistant of Raz, CEO of S.O.S. sales coaching — this message " +
+        "is from Raz himself on the CEO channel. Answer in Hebrew, direct and data-grounded, using the " +
+        "live KPIs when relevant. You can report on students, approvals, costs, content and competitors. " +
+        "If asked to produce deliverables you cannot yet execute (e.g. Canva designs, Instagram posts), " +
+        "say exactly what is possible today and what is pending integration — never pretend. " +
+        'Return STRICT JSON only: {"reply":"...","sensitive":false}.'
+      : "You are the S.O.S. sales-coaching WhatsApp assistant. Draft a warm, concise reply " +
+        "in the sender's language (usually Hebrew). You may answer operational questions " +
+        "(courses, schedules, how the program works, general guidance). Mark sensitive=true " +
+        "for anything about pricing, discounts, refunds, complaints, personal coaching decisions, " +
+        "or commitments on behalf of S.O.S. " +
+        'Return STRICT JSON only: {"reply":"...","sensitive":true|false}.';
 
     const result = await this.agents.invoke(
       orgId,
       "whatsapp_bot",
       {
-        agentCode: "communications",
+        agentCode: isCeo ? "ceo_interface" : "communications",
         approvalLevel: "L1",
-        objective:
-          "You are the S.O.S. sales-coaching WhatsApp assistant. Draft a warm, concise reply " +
-          "in the sender's language (usually Hebrew). You may answer operational questions " +
-          "(courses, schedules, how the program works, general guidance). Mark sensitive=true " +
-          "for anything about pricing, discounts, refunds, complaints, personal coaching decisions, " +
-          "or commitments on behalf of S.O.S. " +
-          'Return STRICT JSON only: {"reply":"...","sensitive":true|false}.',
-        context: `CONVERSATION SO FAR (sender ${msg.from}):\n${historyText}\n\nLATEST MESSAGE:\n${msg.text}`,
-        budgetTokens: 800,
+        objective,
+        context: `CONVERSATION SO FAR (sender ${msg.from}):\n${historyText}\n\nLATEST MESSAGE:\n${msg.text}${knowledgeBlock}${kpiBlock}`,
+        budgetTokens: isCeo ? 1500 : 800,
       },
       traceId,
     );
@@ -270,6 +306,17 @@ export class WhatsAppService {
     } catch {
       // keep safe default
     }
+    if (isCeo) {
+      // CEO channel: no sensitivity gate and no DNA gate — send whatever was drafted.
+      const text = reply ?? raw;
+      if (!text) return this.parkReply(orgId, msg.from, "(no draft)", "unparseable_draft", traceId);
+      try {
+        return await this.executeSend(orgId, msg.from, text, traceId);
+      } catch {
+        return this.parkReply(orgId, msg.from, text, "send_failed", traceId);
+      }
+    }
+
     if (!reply) return this.parkReply(orgId, msg.from, raw || "(no draft)", "unparseable_draft", traceId);
     if (sensitive) return this.parkReply(orgId, msg.from, reply, "sensitive", traceId);
 
