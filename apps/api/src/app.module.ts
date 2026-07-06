@@ -14,6 +14,7 @@ import { SimulationsModule } from "./simulations/simulations.module.js";
 import { WorkflowsModule } from "./workflows/workflows.module.js";
 import { WhatsAppModule } from "./integrations/meta/whatsapp.module.js";
 import { CanvaModule } from "./integrations/canva/canva.module.js";
+import { GoogleModule } from "./integrations/google/google.module.js";
 import { HealthController } from "./health.controller.js";
 
 @Module({
@@ -33,6 +34,7 @@ import { HealthController } from "./health.controller.js";
     WorkflowsModule,
     WhatsAppModule,
     CanvaModule,
+    GoogleModule,
   ],
   controllers: [HealthController],
 })
