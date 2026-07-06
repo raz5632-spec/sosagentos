@@ -132,6 +132,60 @@ describe("KNO-001 knowledge pipeline e2e", () => {
   });
 });
 
+describe("KNO-001b file upload + teaching e2e", () => {
+  let app: INestApplication;
+  let token: string;
+  let orgId: string;
+  let uploadedId: string;
+
+  beforeAll(async () => {
+    delete process.env.ANTHROPIC_API_KEY;
+    const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
+    app = moduleRef.createNestApplication();
+    await app.init();
+    const login = await request(app.getHttpServer())
+      .post("/auth/login")
+      .send({ email: ADMIN_EMAIL, password: ADMIN_PASSWORD })
+      .expect(201);
+    token = login.body.token;
+    orgId = login.body.organizations[0].orgId;
+  });
+
+  afterAll(async () => {
+    const db = getDb();
+    if (uploadedId) {
+      await db.knowledgeChunk.deleteMany({ where: { knowledgeItemId: uploadedId } });
+      await db.knowledgeItem.updateMany({ where: { id: uploadedId }, data: { currentVersionId: null } });
+      await db.knowledgeVersion.deleteMany({ where: { knowledgeItemId: uploadedId } });
+      await db.knowledgeItem.deleteMany({ where: { id: uploadedId } });
+    }
+    await app.close();
+  });
+
+  it("uploads a text file and promotes it straight to production", async () => {
+    const res = await request(app.getHttpServer())
+      .post(`/orgs/${orgId}/knowledge/upload`)
+      .set("Authorization", `Bearer ${token}`)
+      .attach("file", Buffer.from("מפת שיחת המכירה: פתיחה, זיהוי כאב, הצגת ערך, טיפול בהתנגדות, סגירה."), "sales-map.txt")
+      .field("title", "מפת שיחת מכירה")
+      .expect(201);
+    expect(res.body.status).toBe("production");
+    expect(res.body.chars).toBeGreaterThan(10);
+    uploadedId = res.body.id;
+
+    const item = await getDb().knowledgeItem.findUnique({ where: { id: uploadedId } });
+    expect(item?.status).toBe("production");
+    expect(item?.sourceType).toBe("file_upload");
+  });
+
+  it("rejects an upload with no file", async () => {
+    await request(app.getHttpServer())
+      .post(`/orgs/${orgId}/knowledge/upload`)
+      .set("Authorization", `Bearer ${token}`)
+      .expect(400);
+  });
+});
+
 describe("KNO-002 semantic search + graph e2e", () => {
   let app: INestApplication;
   let token: string;

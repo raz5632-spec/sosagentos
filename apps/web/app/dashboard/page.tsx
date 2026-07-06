@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { api, clearSession, getSession, type Session } from "../../lib/api";
+import { api, API_URL, clearSession, getSession, type Session } from "../../lib/api";
 
 interface Dashboard {
   kpis: Record<string, number>;
@@ -106,6 +106,30 @@ export default function DashboardPage() {
       setError(String(err));
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function uploadFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file || !session) return;
+    setBusy(true);
+    setError("");
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      form.append("title", file.name.replace(/\.[^.]+$/, ""));
+      const res = await fetch(`${API_URL}/orgs/${session.orgId}/knowledge/upload`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${session.token}` },
+        body: form,
+      });
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).message ?? `HTTP ${res.status}`);
+      await Promise.all([refreshKnowledge(session.orgId), refresh(session.orgId)]);
+    } catch (err) {
+      setError(String(err));
+    } finally {
+      setBusy(false);
+      e.target.value = "";
     }
   }
 
@@ -264,6 +288,25 @@ export default function DashboardPage() {
             הוסף ושלח לאישור
           </button>
         </form>
+
+        <div className="row" style={{ marginTop: 12, gap: 10 }}>
+          <label className="btn-primary" style={{ cursor: "pointer", display: "inline-block" }}>
+            📎 העלה קובץ (PDF / Word / טקסט)
+            <input
+              type="file"
+              accept=".pdf,.docx,.txt,.md,.csv"
+              onChange={uploadFile}
+              disabled={busy}
+              style={{ display: "none" }}
+            />
+          </label>
+          <span className="muted">קובץ שתעלה נלמד מיד לזיכרון הסוכן</span>
+        </div>
+
+        <p className="muted" style={{ marginTop: 12 }}>
+          💬 אפשר גם ללמד את הסוכן ישירות בוואטסאפ: שלח לו הודעה כמו &quot;תזכור שמפת שיחת
+          המכירה שלנו היא...&quot; והוא ישמור את זה בזיכרון הקבוע.
+        </p>
 
         {knowledge.length > 0 && (
           <div className="grid" style={{ marginTop: 14 }}>

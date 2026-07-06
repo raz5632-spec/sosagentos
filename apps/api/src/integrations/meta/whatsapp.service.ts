@@ -271,16 +271,22 @@ export class WhatsAppService {
         approvalLevel: "L1",
         objective:
           "You are the personal executive assistant of Raz, CEO of S.O.S. sales coaching — this " +
-          "message is from Raz himself. Classify his intent and respond in Hebrew. Intents: " +
+          "message is from Raz himself. ALWAYS reply in Hebrew only — never in English, not a single " +
+          "word, even for technical terms. Classify his intent. Intents: " +
           '"chat" (a quick question/status — answer directly using the live KPIs); ' +
           '"report" (he wants a weekly/competitor/summary report — write a clear, structured ' +
           "digest from the DASHBOARD DIGEST: students & at-risk, approvals pending, content pipeline, " +
           "knowledge, AI cost, and what stands out; be honest that competitor/social data is limited " +
           'until those pipelines have data); ' +
-          '"content" (he wants a post/carousel/story/script produced — extract a short topic). ' +
+          '"content" (he wants a post/carousel/story/script produced — extract a short topic); ' +
+          '"teach" (he is teaching you something to remember — a sales-conversation map, a principle, ' +
+          "a fact about S.O.S., how to answer something. Extract a clear title and the full lesson " +
+          "content so it can be saved to permanent memory). " +
           "Never invent capabilities: Canva rendering and Instagram posting are not connected yet, " +
           "so for content say the text draft will be prepared and returned for approval. " +
-          'Return STRICT JSON only: {"intent":"chat|report|content","topic":"<if content>","reply":"<hebrew message to send now>"}.',
+          'Return STRICT JSON only, all text in Hebrew: {"intent":"chat|report|content|teach",' +
+          '"topic":"<if content: short topic>","title":"<if teach: short title>",' +
+          '"lesson":"<if teach: the full material to remember>","reply":"<hebrew message to send now>"}.',
         context: `CONVERSATION SO FAR:\n${historyText}\n\nLATEST MESSAGE:\n${msg.text}${kpiBlock}${reportBlock}${knowledgeBlock}`,
         budgetTokens: 2000,
       },
@@ -289,18 +295,47 @@ export class WhatsAppService {
     const raw = ((result.output as { text?: string })?.text ?? "").trim();
     let intent = "chat";
     let topic = "";
+    let teachTitle = "";
+    let teachLesson = "";
     let reply = raw;
     try {
       const parsed = JSON.parse(raw.slice(raw.indexOf("{"), raw.lastIndexOf("}") + 1)) as {
         intent?: string;
         topic?: string;
+        title?: string;
+        lesson?: string;
         reply?: string;
       };
       if (parsed.reply) reply = parsed.reply;
       if (parsed.intent) intent = parsed.intent;
       if (parsed.topic) topic = parsed.topic;
+      if (parsed.title) teachTitle = parsed.title;
+      if (parsed.lesson) teachLesson = parsed.lesson;
     } catch {
       /* fall back to raw as chat */
+    }
+
+    // Teach command → save straight to permanent memory (CEO is authoritative).
+    if (intent === "teach" && teachLesson) {
+      try {
+        const item = await this.knowledge.capture(
+          orgId,
+          "ceo_whatsapp",
+          {
+            title: (teachTitle || teachLesson.slice(0, 60)).slice(0, 120),
+            type: "ceo_lesson",
+            sourceType: "whatsapp_teaching",
+            content: teachLesson,
+          },
+          traceId,
+        );
+        await this.knowledge.promote(orgId, item.id, "ceo_whatsapp", traceId);
+        reply =
+          reply ||
+          `קיבלתי ולמדתי 💡 שמרתי את זה בזיכרון הקבוע ("${teachTitle || "שיעור חדש"}") — מעכשיו אתבסס על זה בתשובות שלי.`;
+      } catch (err) {
+        reply = `רציתי לשמור את זה בזיכרון אבל נתקלתי בבעיה: ${String(err)}.`;
+      }
     }
 
     // Content command → run the content engine (brief → copy draft + DNA QA).
@@ -388,8 +423,8 @@ export class WhatsAppService {
     }
 
     const objective =
-      "You are the S.O.S. sales-coaching WhatsApp assistant. Draft a warm, concise reply " +
-        "in the sender's language (usually Hebrew). You may answer operational questions " +
+      "You are the S.O.S. sales-coaching WhatsApp assistant. ALWAYS reply in Hebrew only — never " +
+        "English. Draft a warm, concise reply. You may answer operational questions " +
         "(courses, schedules, how the program works, general guidance). Mark sensitive=true " +
         "for anything about pricing, discounts, refunds, complaints, personal coaching decisions, " +
         "or commitments on behalf of S.O.S. " +

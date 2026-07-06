@@ -25,6 +25,23 @@ export function chunkText(text: string, maxLen = 1500): string[] {
   return chunks.length ? chunks : [text.trim()];
 }
 
+/** Extract plain text from an uploaded file buffer by MIME/extension. */
+export async function extractText(filename: string, mimetype: string, buf: Buffer): Promise<string> {
+  const lower = filename.toLowerCase();
+  if (mimetype.includes("pdf") || lower.endsWith(".pdf")) {
+    const { PDFParse } = await import("pdf-parse");
+    const parser = new PDFParse({ data: new Uint8Array(buf) });
+    const result = await parser.getText();
+    return result.text;
+  }
+  if (lower.endsWith(".docx") || mimetype.includes("wordprocessingml")) {
+    const mammoth = await import("mammoth");
+    return (await mammoth.extractRawText({ buffer: buf })).value;
+  }
+  // txt / md / csv / anything text-like
+  return buf.toString("utf-8");
+}
+
 @Injectable()
 export class KnowledgeService {
   private embedder: EmbeddingProvider = new HashingEmbeddingProvider();

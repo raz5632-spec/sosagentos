@@ -7,14 +7,23 @@ import {
   Post,
   Query,
   Req,
+  UploadedFile,
   UseGuards,
+  UseInterceptors,
 } from "@nestjs/common";
+import { FileInterceptor } from "@nestjs/platform-express";
 import type { ApiRequest } from "../common/request.js";
 import { JwtAuthGuard, CurrentUser } from "../auth/jwt.guard.js";
 import { TenantGuard } from "../auth/tenant.guard.js";
 import { Roles, RolesGuard } from "../auth/roles.guard.js";
 import type { JwtClaims } from "../auth/auth.service.js";
-import { KnowledgeService } from "./knowledge.service.js";
+import { KnowledgeService, extractText } from "./knowledge.service.js";
+
+interface UploadedFileLike {
+  originalname: string;
+  mimetype: string;
+  buffer: Buffer;
+}
 
 @Controller("orgs/:orgId/knowledge")
 @UseGuards(JwtAuthGuard, TenantGuard, RolesGuard)
@@ -95,6 +104,40 @@ export class KnowledgeController {
       },
       req.traceId,
     );
+  }
+
+  @Post("upload")
+  @Roles("owner", "manager", "coach")
+  @UseInterceptors(FileInterceptor("file", { limits: { fileSize: 15 * 1024 * 1024 } }))
+  async upload(
+    @Param("orgId") orgId: string,
+    @CurrentUser() user: JwtClaims,
+    @UploadedFile() file: UploadedFileLike | undefined,
+    @Body() body: { title?: string; autoApprove?: string },
+    @Req() req: ApiRequest,
+  ) {
+    if (!file) throw new BadRequestException("file is required");
+    const text = (await extractText(file.originalname, file.mimetype, file.buffer)).trim();
+    if (!text) throw new BadRequestException("could not extract any text from the file");
+    const captured = await this.knowledge.capture(
+      orgId,
+      user.sub,
+      {
+        title: body?.title || file.originalname.replace(/\.[^.]+$/, ""),
+        type: "training_material",
+        sourceType: "file_upload",
+        sourceRef: file.originalname,
+        content: text,
+      },
+      req.traceId,
+    );
+    // CEO uploads are trusted: promote straight to memory unless asked otherwise.
+    if (body?.autoApprove !== "false") {
+      await this.knowledge.promote(orgId, captured.id, user.sub, req.traceId);
+      return { ...captured, status: "production", chars: text.length };
+    }
+    await this.knowledge.submitForApproval(orgId, captured.id, user.sub, req.traceId);
+    return { ...captured, status: "in_review", chars: text.length };
   }
 
   @Post(":id/submit")
