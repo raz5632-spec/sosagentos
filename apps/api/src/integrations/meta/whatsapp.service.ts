@@ -147,11 +147,23 @@ export class WhatsAppService {
       }
     }
 
-    // Conversational bot: reply to each newly-stored text message.
-    for (const msg of messages) {
-      if (msg.text && stored > 0) {
+    // Conversational bot: reply to each newly-stored message.
+    if (stored > 0) {
+      for (const msg of messages) {
         try {
-          await this.autoReply(orgId, msg, traceId);
+          if (msg.text) {
+            await this.autoReply(orgId, msg, traceId);
+          } else if (msg.type && msg.type !== "text") {
+            // Non-text (voice/image/document): acknowledge gracefully in Hebrew
+            // instead of ignoring. Full voice→text / image→vision is a later step.
+            const note =
+              msg.type === "audio"
+                ? "קיבלתי הודעה קולית 🎙️ — כרגע אני מבין רק טקסט. אפשר לכתוב לי בבקשה?"
+                : msg.type === "image"
+                  ? "קיבלתי תמונה 📷 — כרגע אני עובד על טקסט. תוכל לתאר לי מה בתמונה או לכתוב לי?"
+                  : "קיבלתי את ההודעה — כרגע אני מבין רק טקסט. אפשר לכתוב לי?";
+            await this.executeSend(orgId, msg.from, note, traceId).catch(() => undefined);
+          }
         } catch (err) {
           await writeAudit({
             orgId,
