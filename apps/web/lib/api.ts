@@ -36,6 +36,12 @@ export async function api<T>(
     },
     body: opts.body ? JSON.stringify(opts.body) : undefined,
   });
+  if (res.status === 401 && typeof window !== "undefined") {
+    // Expired/invalid session → clear and bounce to login instead of a raw error.
+    clearSession();
+    window.location.href = "/";
+    throw new Error("expired");
+  }
   if (!res.ok) {
     const err = (await res.json().catch(() => ({}))) as { message?: string };
     throw new Error(err.message ?? `HTTP ${res.status}`);
