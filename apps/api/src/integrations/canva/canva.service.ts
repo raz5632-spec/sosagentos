@@ -149,10 +149,12 @@ export class CanvaService {
     const body = asset.versions[0]?.bodyJson as { text?: string } | undefined;
     const title = asset.title.slice(0, 50);
 
+    // Canva presets are limited (doc/whiteboard/presentation); an Instagram
+    // square post is a custom 1080x1080 design.
     const res = await fetch(`${API}/designs`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ design_type: { type: "preset", name: "instagram_post" }, title }),
+      body: JSON.stringify({ design_type: { type: "custom", width: 1080, height: 1080 }, title }),
     });
     const data = (await res.json().catch(() => ({}))) as {
       design?: { id?: string; urls?: { edit_url?: string; view_url?: string } };
