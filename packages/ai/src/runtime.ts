@@ -2,6 +2,7 @@ import { AcpMessage, confidencePolicy } from "@salesos/contracts";
 import { getDb, writeAudit } from "@salesos/db";
 import { createHash } from "node:crypto";
 import type { ModelRouter, TaskClass } from "./router.js";
+import type { ImageInput } from "./provider.js";
 import { estimateCostUsd } from "./pricing.js";
 
 export interface DispatchOptions {
@@ -9,6 +10,8 @@ export interface DispatchOptions {
   approved?: boolean;
   taskClass?: TaskClass;
   traceId?: string;
+  /** Optional images for vision (Claude). */
+  images?: ImageInput[];
 }
 
 /**
@@ -71,6 +74,7 @@ export class AgentRuntime {
       const result = await this.router.complete(opts.taskClass ?? "default", {
         system,
         prompt,
+        images: opts.images,
         maxTokens: msg.constraints.budgetTokens,
       });
 

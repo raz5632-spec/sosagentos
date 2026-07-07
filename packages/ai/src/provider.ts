@@ -1,11 +1,18 @@
 // Provider adapter contract. Business logic never couples to provider-specific
 // objects — see docs/05-integrations/llm-providers.md.
 
+export interface ImageInput {
+  mediaType: string; // e.g. "image/jpeg", "image/png"
+  base64: string;
+}
+
 export interface CompletionRequest {
   model: string;
   system?: string;
   prompt: string;
   maxTokens?: number;
+  /** Optional images for vision-capable models (Claude). */
+  images?: ImageInput[];
 }
 
 export interface CompletionUsage {

@@ -12,11 +12,25 @@ export class AnthropicProvider implements ModelProvider {
   }
 
   async complete(req: CompletionRequest): Promise<CompletionResult> {
+    // Vision: prepend image blocks before the text prompt when present.
+    const content: Anthropic.ContentBlockParam[] = [];
+    for (const img of req.images ?? []) {
+      content.push({
+        type: "image",
+        source: {
+          type: "base64",
+          media_type: img.mediaType as "image/jpeg" | "image/png" | "image/gif" | "image/webp",
+          data: img.base64,
+        },
+      });
+    }
+    content.push({ type: "text", text: req.prompt });
+
     const response = await this.client.messages.create({
       model: req.model,
       max_tokens: req.maxTokens ?? 4096,
       system: req.system,
-      messages: [{ role: "user", content: req.prompt }],
+      messages: [{ role: "user", content }],
     });
 
     const text = response.content

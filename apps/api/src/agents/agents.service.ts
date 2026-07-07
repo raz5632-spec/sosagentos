@@ -8,6 +8,7 @@ import {
   ModelRouter,
   type ModelProvider,
   type TaskClass,
+  type ImageInput,
 } from "@salesos/ai";
 import type { ApprovalLevel } from "@salesos/contracts";
 
@@ -42,6 +43,7 @@ export class AgentsService {
       context?: string;
       approved?: boolean;
       budgetTokens?: number;
+      images?: ImageInput[];
     },
     traceId?: string,
   ) {
@@ -58,7 +60,7 @@ export class AgentsService {
         constraints: input.budgetTokens ? { budgetTokens: input.budgetTokens } : {},
         inputs: input.context ? { inlineSummary: input.context } : {},
       },
-      { approved: input.approved, taskClass: input.taskClass, traceId },
+      { approved: input.approved, taskClass: input.taskClass, traceId, images: input.images },
     );
   }
 

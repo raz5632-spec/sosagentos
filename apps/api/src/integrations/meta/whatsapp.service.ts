@@ -9,6 +9,13 @@ import { CanvaService } from "../canva/canva.service.js";
 
 const GRAPH_URL = "https://graph.facebook.com/v21.0";
 
+// Shared persona for every WhatsApp reply — sound like a sharp, human Israeli
+// sales advisor, not a robot. Natural spoken Hebrew, warm but direct.
+const VOICE =
+  "כתוב בעברית טבעית וזורמת כמו בן אדם אמיתי שמדבר בוואטסאפ — משפטים קצרים, חמים אבל ישירים " +
+  "וחכמים, בגובה העיניים. בלי שפה רובוטית, בלי 'כמובן' ו'בשמחה' סתמיים, בלי לחזור על השאלה. " +
+  "תיכנס לעניין, תהיה מדויק, ותשתמש בידע של S.O.S. כשהוא רלוונטי. לעולם לא לענות באנגלית. ";
+
 // Autonomy policy (CEO decision 2026-07-05, "option A"): the bot replies
 // autonomously to operational questions; sensitive topics (pricing, complaints,
 // refunds, commitments) and DNA failures are parked in the approvals inbox.
@@ -19,6 +26,8 @@ export interface NormalizedWhatsAppMessage {
   timestamp: string;
   type: string;
   text: string | null;
+  mediaId?: string | null;
+  mediaType?: string | null;
 }
 
 @Injectable()
@@ -91,6 +100,7 @@ export class WhatsAppService {
               timestamp: string;
               type: string;
               text?: { body?: string };
+              image?: { id?: string; caption?: string; mime_type?: string };
             }>;
           };
         }>;
@@ -104,7 +114,9 @@ export class WhatsAppService {
             from: msg.from,
             timestamp: msg.timestamp,
             type: msg.type,
-            text: msg.text?.body ?? null,
+            text: msg.text?.body ?? msg.image?.caption ?? null,
+            mediaId: msg.image?.id ?? null,
+            mediaType: msg.image?.mime_type ?? null,
           });
         }
       }
@@ -151,17 +163,16 @@ export class WhatsAppService {
     if (stored > 0) {
       for (const msg of messages) {
         try {
-          if (msg.text) {
+          if (msg.type === "image" && msg.mediaId) {
+            await this.imageReply(orgId, msg, traceId);
+          } else if (msg.text) {
             await this.autoReply(orgId, msg, traceId);
           } else if (msg.type && msg.type !== "text") {
-            // Non-text (voice/image/document): acknowledge gracefully in Hebrew
-            // instead of ignoring. Full voice→text / image→vision is a later step.
+            // Audio/video/document still need a dedicated pipeline (voice→STT).
             const note =
               msg.type === "audio"
-                ? "קיבלתי הודעה קולית 🎙️ — כרגע אני מבין רק טקסט. אפשר לכתוב לי בבקשה?"
-                : msg.type === "image"
-                  ? "קיבלתי תמונה 📷 — כרגע אני עובד על טקסט. תוכל לתאר לי מה בתמונה או לכתוב לי?"
-                  : "קיבלתי את ההודעה — כרגע אני מבין רק טקסט. אפשר לכתוב לי?";
+                ? "קיבלתי הודעה קולית 🎙️ — עדיין לא מחובר לתמלול קולי. אפשר לכתוב לי בבקשה?"
+                : "קיבלתי את הקובץ — כרגע אני מבין טקסט ותמונות. אפשר לכתוב לי או לשלוח תמונה?";
             await this.executeSend(orgId, msg.from, note, traceId).catch(() => undefined);
           }
         } catch (err) {
@@ -282,9 +293,10 @@ export class WhatsAppService {
         agentCode: "ceo_interface",
         approvalLevel: "L1",
         objective:
+          VOICE +
           "You are the personal executive assistant of Raz, CEO of S.O.S. sales coaching — this " +
           "message is from Raz himself. ALWAYS reply in Hebrew only — never in English, not a single " +
-          "word, even for technical terms. Classify his intent. Intents: " +
+          "word, even for technical terms (use Hebrew or transliteration). Classify his intent. Intents: " +
           '"chat" (a quick question/status — answer directly using the live KPIs); ' +
           '"report" (he wants a weekly/competitor/summary report — write a clear, structured ' +
           "digest from the DASHBOARD DIGEST: students & at-risk, approvals pending, content pipeline, " +
@@ -435,6 +447,7 @@ export class WhatsAppService {
     }
 
     const objective =
+      VOICE +
       "You are the S.O.S. sales-coaching WhatsApp assistant. ALWAYS reply in Hebrew only — never " +
         "English. Draft a warm, concise reply. You may answer operational questions " +
         "(courses, schedules, how the program works, general guidance). Mark sensitive=true " +
@@ -503,6 +516,63 @@ export class WhatsAppService {
     } catch {
       return this.parkReply(orgId, msg.from, reply, "send_failed", traceId);
     }
+  }
+
+  /** Download WhatsApp media (image) and return it base64-encoded for vision. */
+  private async downloadMedia(mediaId: string): Promise<{ base64: string; mediaType: string } | null> {
+    const token = process.env.WHATSAPP_ACCESS_TOKEN;
+    if (!token) return null;
+    const metaRes = await fetch(`${GRAPH_URL}/${mediaId}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const meta = (await metaRes.json().catch(() => ({}))) as { url?: string; mime_type?: string };
+    if (!metaRes.ok || !meta.url) return null;
+    const binRes = await fetch(meta.url, { headers: { Authorization: `Bearer ${token}` } });
+    if (!binRes.ok) return null;
+    const buf = Buffer.from(await binRes.arrayBuffer());
+    return { base64: buf.toString("base64"), mediaType: meta.mime_type ?? "image/jpeg" };
+  }
+
+  /** Vision: download the image and let Claude describe/act on it, then reply. */
+  async imageReply(orgId: string, msg: NormalizedWhatsAppMessage, traceId?: string) {
+    const media = await this.downloadMedia(msg.mediaId!);
+    if (!media) {
+      await this.executeSend(orgId, msg.from, "קיבלתי תמונה 📷 אבל לא הצלחתי להוריד אותה. אפשר לנסות שוב?", traceId).catch(() => undefined);
+      return;
+    }
+    const isCeo = !!process.env.CEO_WHATSAPP_NUMBER && msg.from === process.env.CEO_WHATSAPP_NUMBER;
+    const caption = msg.text ? `כיתוב שצורף: "${msg.text}".` : "";
+    const result = await this.agents.invoke(
+      orgId,
+      "whatsapp_bot",
+      {
+        agentCode: isCeo ? "ceo_interface" : "communications",
+        approvalLevel: "L1",
+        objective:
+          "אתה עוזר של S.O.S. לאימון מכירות ומקבל תמונה בוואטסאפ. תסתכל על התמונה ותגיב בעברית " +
+          "בלבד, בצורה טבעית וחדה כמו יועץ אנושי. אם זו סקיצה/עיצוב/צילום מסך של תוכן — תן משוב " +
+          "ענייני. אם זה משהו אחר — תגיד מה אתה רואה ואיך זה קשור. " +
+          caption +
+          " תחזיר טקסט בלבד (לא JSON), עברית בלבד.",
+        context: msg.text ?? "",
+        images: [{ mediaType: media.mediaType, base64: media.base64 }],
+        budgetTokens: 1500,
+      },
+      traceId,
+    );
+    const reply = ((result.output as { text?: string })?.text ?? "ראיתי את התמונה, אבל לא הצלחתי לנסח תגובה. אפשר לתאר לי מה חשוב לך בה?").trim();
+    await this.executeSend(orgId, msg.from, reply, traceId).catch(async () => {
+      await this.parkReply(orgId, msg.from, reply, "send_failed", traceId);
+    });
+    await writeAudit({
+      orgId,
+      actorType: "agent",
+      actorId: "whatsapp_bot",
+      action: "whatsapp.image_analyzed",
+      subjectType: "webhook_event",
+      subjectId: msg.providerEventId,
+      traceId,
+    });
   }
 
   /** Execute an approved outbound send via the Graph API. */
