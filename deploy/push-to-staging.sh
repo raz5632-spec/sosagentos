@@ -35,7 +35,8 @@ for K in ANTHROPIC_API_KEY META_APP_ID META_APP_SECRET META_WEBHOOK_VERIFY_TOKEN
   $SSH "grep -q '^$K=' /opt/salesos/.env && sed -i 's|^$K=.*|$K=$V|' /opt/salesos/.env || echo '$K=$V' >> /opt/salesos/.env"
 done
 
-echo "==> 3/5 building containers (first time takes ~5-10 min)..."
+echo "==> 3/5 freeing disk (prune old build cache + images) then building..."
+$SSH 'sudo docker builder prune -af >/dev/null 2>&1; sudo docker image prune -af >/dev/null 2>&1; df -h / | tail -1'
 $SSH 'cd /opt/salesos/app && sudo docker compose --env-file /opt/salesos/.env -f deploy/docker-compose.prod.yml build'
 
 echo "==> 4/5 running migrations + seed..."
