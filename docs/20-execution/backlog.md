@@ -21,6 +21,6 @@
 | 17 | CMP-001 | Competitor observation pipeline | Medium-high | 6d | KNO-002 | **done** |
 | 18 | AUT-001 | Workflow runtime on Temporal + notifications | High | 8d | AGT-001 | **done** (DB-backed runner v1 per ADR-2026-07-03; Temporal re-evaluated at OPS-001) |
 | 19 | OPS-001 | Staging/prod, monitoring, backups, runbooks | High | 7d | FND-001 onward | **done** (EC2+compose live; deploy prunes disk; nightly pg_dump backup ×14 retention + 5-min health monitor with auto-restart, cron on host) |
-| 20 | LCH-001 | Launch hardening, App Review evidence, UAT | Critical before release | 10d | Most above | pending |
+| 20 | LCH-001 | Launch hardening, App Review evidence, UAT | Critical before release | 10d | Most above | **in_progress** (privacy/terms pages live; launch-checklist.md written; awaiting lawyer sign-off, Meta App Review, key rotation, dedicated number, IG) |
 
 | 21 | FRN-001 | CEO console web app (added 2026-07-03 — frontend absent from original backlog) | High | 10d | ANA-001, GOV-001 | **done** (v1: login, KPI dashboard, approvals inbox, agent console) |
