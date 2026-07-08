@@ -15,6 +15,7 @@
     "@nestjs/core": "^11.0.0",
     "@nestjs/jwt": "^11.0.0",
     "@nestjs/platform-express": "^11.0.0",
+    "@resvg/resvg-js": "^2.6.2",
     "@salesos/ai": "workspace:^",
     "@salesos/contracts": "workspace:^",
     "@salesos/db": "workspace:*",

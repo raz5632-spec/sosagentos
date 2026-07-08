@@ -6,6 +6,7 @@ import { KnowledgeService } from "../../knowledge/knowledge.service.js";
 import { AnalyticsService } from "../../analytics/analytics.service.js";
 import { ContentService } from "../../content/content.service.js";
 import { CanvaService } from "../canva/canva.service.js";
+import { renderSlide, parseSlides } from "../../content/slides.js";
 
 const GRAPH_URL = "https://graph.facebook.com/v21.0";
 
@@ -379,37 +380,28 @@ export class WhatsAppService {
         const draft = await this.content.draft(orgId, brief.id, "whatsapp_bot", traceId);
         const preview = (draft.draft ?? "").slice(0, 800);
 
-        // If Canva is connected: create a design, export it to an image, and
-        // send the actual image to WhatsApp (not just a link).
-        let canvaLine =
-          "כשנחבר את Canva אוכל להפוך את זה לעיצוב מוכן, וכשנחבר אינסטגרם — לתזמן העלאה.";
-        let sentImage = false;
+        // Render the carousel as real branded slide images and send them.
+        let slidesSent = 0;
         try {
-          const design = await this.canva.designFromContent(orgId, brief.id, traceId);
-          if (design.connected && design.designId) {
-            const imageUrl = await this.canva.exportDesignImage(orgId, design.designId);
-            if (imageUrl) {
-              const res = await this.sendImage(
-                orgId,
-                msg.from,
-                imageUrl,
-                `עיצוב על "${topic}" — טיוטה לאישור/עריכה`,
-                traceId,
-              );
-              sentImage = res.sent;
-            }
-            canvaLine = design.editUrl
-              ? `${sentImage ? "שלחתי לך את העיצוב כתמונה 👆 " : ""}לעריכה מלאה ב-Canva:\n${design.editUrl}`
-              : canvaLine;
-          }
+          slidesSent = await this.sendCarouselSlides(orgId, msg.from, draft.draft ?? "", topic, traceId);
         } catch {
-          /* Canva is optional; the text draft is the deliverable */
+          /* image sending is best-effort; the text draft is still delivered */
         }
 
-        reply =
-          `הכנתי טיוטת תוכן על "${topic}" ✍️\n\n${preview}\n\n` +
-          `נשמרה בצנרת התוכן (בדיקת מותג: ${draft.qaStatus}). ${canvaLine} ` +
-          `אפשר לאשר/לתקן בקונסולה.`;
+        // Also create a Canva design for further editing (link only).
+        let canvaLine = "";
+        try {
+          const design = await this.canva.designFromContent(orgId, brief.id, traceId);
+          if (design.connected && design.editUrl) {
+            canvaLine = `לעריכה/מיתוג נוסף ב-Canva:\n${design.editUrl}\n`;
+          }
+        } catch {
+          /* optional */
+        }
+
+        reply = slidesSent
+          ? `הנה הקרוסלה על "${topic}" — ${slidesSent} שקפים מעוצבים 👆\n\n${canvaLine}אפשר לאשר/לתקן בקונסולה.`
+          : `הכנתי טיוטת תוכן על "${topic}" ✍️\n\n${preview}\n\n${canvaLine}נשמרה בצנרת התוכן (בדיקת מותג: ${draft.qaStatus}). אפשר לאשר/לתקן בקונסולה.`;
       } catch (err) {
         reply = `רציתי להכין את התוכן אבל נתקלתי בבעיה: ${String(err)}. אפשר לנסות שוב או להכין בקונסולה.`;
       }
@@ -588,6 +580,73 @@ export class WhatsAppService {
       subjectId: msg.providerEventId,
       traceId,
     });
+  }
+
+  /** Upload an image buffer to WhatsApp media, returning a media id. */
+  async uploadMedia(pngBuffer: Buffer): Promise<string | null> {
+    const token = process.env.WHATSAPP_ACCESS_TOKEN;
+    const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID;
+    if (!token || !phoneNumberId) return null;
+    const form = new FormData();
+    form.append("messaging_product", "whatsapp");
+    form.append("type", "image/png");
+    form.append("file", new Blob([new Uint8Array(pngBuffer)], { type: "image/png" }), "slide.png");
+    const res = await fetch(`${GRAPH_URL}/${phoneNumberId}/media`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+      body: form,
+    });
+    const body = (await res.json().catch(() => ({}))) as { id?: string };
+    return res.ok ? (body.id ?? null) : null;
+  }
+
+  /** Send a previously-uploaded image by media id. */
+  async sendImageById(orgId: string, to: string, mediaId: string, caption?: string, traceId?: string) {
+    const token = process.env.WHATSAPP_ACCESS_TOKEN;
+    const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID;
+    if (!token || !phoneNumberId) return { sent: false as const };
+    const res = await fetch(`${GRAPH_URL}/${phoneNumberId}/messages`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify({
+        messaging_product: "whatsapp",
+        to,
+        type: "image",
+        image: { id: mediaId, ...(caption ? { caption } : {}) },
+      }),
+    });
+    await writeAudit({
+      orgId,
+      actorType: "system",
+      actorId: "whatsapp_sender",
+      action: res.ok ? "whatsapp.image_sent" : "whatsapp.image_send_failed",
+      subjectType: "integration_connection",
+      subjectId: "meta_whatsapp",
+      traceId,
+      payload: { to },
+    });
+    return { sent: res.ok };
+  }
+
+  /** Render carousel slides from a draft and send them as real images. */
+  async sendCarouselSlides(orgId: string, to: string, draft: string, topic: string, traceId?: string): Promise<number> {
+    const slides = parseSlides(draft);
+    if (slides.length === 0) return 0;
+    let sent = 0;
+    for (let i = 0; i < slides.length; i++) {
+      const png = renderSlide(slides[i], i + 1, slides.length);
+      const mediaId = await this.uploadMedia(png);
+      if (!mediaId) continue;
+      const res = await this.sendImageById(
+        orgId,
+        to,
+        mediaId,
+        i === 0 ? `קרוסלה על "${topic}" — טיוטה לאישור` : undefined,
+        traceId,
+      );
+      if (res.sent) sent++;
+    }
+    return sent;
   }
 
   /** Send an image message (by public URL) via the Graph API. */

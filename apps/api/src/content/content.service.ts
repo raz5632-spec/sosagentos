@@ -90,8 +90,13 @@ export class ContentService {
       {
         agentCode: "copy",
         approvalLevel: "L1", // draft is internal; publication is gated separately
-        objective: `Write the ${asset.type} content for channel ${asset.targetChannel ?? "general"} based on the brief. Match S.O.S. tone. Return the content text only.`,
-        context: `BRIEF:\n${brief}`,
+        objective:
+          `כתוב את התוכן ל-${asset.type} עבור ${asset.targetChannel ?? "כללי"} של S.O.S. אימון מכירות. ` +
+          "כתוב בעברית בלבד, בטון של S.O.S — חד, אנרגטי, מקצועי. " +
+          "אל תבקש מידע נוסף ואל תסביר מה חסר — פשוט תכתוב את התוכן המלא ותמלא פערים בהיגיון. " +
+          `אם זה קרוסלה — כתוב בדיוק 5 שקפים, כל שקף בפורמט:\nשקף 1: [כותרת קצרה]\n[טקסט השקף]\n\n` +
+          "בסוף הוסף שורת קריאה לפעולה (CTA). תחזיר טקסט בלבד, עברית בלבד, בלי הקדמות.",
+        context: `הבריף:\n${brief}`,
         budgetTokens: 2000,
       },
       traceId,
