@@ -379,13 +379,28 @@ export class WhatsAppService {
         const draft = await this.content.draft(orgId, brief.id, "whatsapp_bot", traceId);
         const preview = (draft.draft ?? "").slice(0, 800);
 
-        // If Canva is connected, seed a design and hand back the edit link.
+        // If Canva is connected: create a design, export it to an image, and
+        // send the actual image to WhatsApp (not just a link).
         let canvaLine =
           "כשנחבר את Canva אוכל להפוך את זה לעיצוב מוכן, וכשנחבר אינסטגרם — לתזמן העלאה.";
+        let sentImage = false;
         try {
           const design = await this.canva.designFromContent(orgId, brief.id, traceId);
-          if (design.connected && design.editUrl) {
-            canvaLine = `הכנתי גם עיצוב מוכן ב-Canva — לחץ לערוך/לייצא:\n${design.editUrl}`;
+          if (design.connected && design.designId) {
+            const imageUrl = await this.canva.exportDesignImage(orgId, design.designId);
+            if (imageUrl) {
+              const res = await this.sendImage(
+                orgId,
+                msg.from,
+                imageUrl,
+                `עיצוב על "${topic}" — טיוטה לאישור/עריכה`,
+                traceId,
+              );
+              sentImage = res.sent;
+            }
+            canvaLine = design.editUrl
+              ? `${sentImage ? "שלחתי לך את העיצוב כתמונה 👆 " : ""}לעריכה מלאה ב-Canva:\n${design.editUrl}`
+              : canvaLine;
           }
         } catch {
           /* Canva is optional; the text draft is the deliverable */
@@ -573,6 +588,35 @@ export class WhatsAppService {
       subjectId: msg.providerEventId,
       traceId,
     });
+  }
+
+  /** Send an image message (by public URL) via the Graph API. */
+  async sendImage(orgId: string, to: string, imageUrl: string, caption?: string, traceId?: string) {
+    const token = process.env.WHATSAPP_ACCESS_TOKEN;
+    const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID;
+    if (!token || !phoneNumberId) return { sent: false as const };
+    const res = await fetch(`${GRAPH_URL}/${phoneNumberId}/messages`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify({
+        messaging_product: "whatsapp",
+        to,
+        type: "image",
+        image: { link: imageUrl, ...(caption ? { caption } : {}) },
+      }),
+    });
+    const ok = res.ok;
+    await writeAudit({
+      orgId,
+      actorType: "system",
+      actorId: "whatsapp_sender",
+      action: ok ? "whatsapp.image_sent" : "whatsapp.image_send_failed",
+      subjectType: "integration_connection",
+      subjectId: "meta_whatsapp",
+      traceId,
+      payload: { to },
+    });
+    return { sent: ok };
   }
 
   /** Execute an approved outbound send via the Graph API. */

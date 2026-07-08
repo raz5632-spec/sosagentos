@@ -96,6 +96,38 @@ export class CanvaService {
     }
   }
 
+  /**
+   * Export a design to a PNG and return the file URL. Canva exports are async:
+   * create job → poll until success. Returns null if not connected or on error.
+   */
+  async exportDesignImage(orgId: string, designId: string): Promise<string | null> {
+    const token = await this.accessToken(orgId);
+    if (!token) return null;
+    const createRes = await fetch(`${API}/exports`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ design_id: designId, format: { type: "png" } }),
+    });
+    const created = (await createRes.json().catch(() => ({}))) as { job?: { id?: string } };
+    const jobId = created.job?.id;
+    if (!createRes.ok || !jobId) return null;
+
+    // Poll the export job (usually ready within a few seconds).
+    for (let i = 0; i < 15; i++) {
+      await new Promise((r) => setTimeout(r, 1500));
+      const jobRes = await fetch(`${API}/exports/${jobId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const job = (await jobRes.json().catch(() => ({}))) as {
+        job?: { status?: string; urls?: string[] };
+      };
+      const status = job.job?.status;
+      if (status === "success") return job.job?.urls?.[0] ?? null;
+      if (status === "failed") return null;
+    }
+    return null;
+  }
+
   /** Valid access token, refreshing if expired. Returns null if not connected. */
   private async accessToken(orgId: string): Promise<string | null> {
     const db = getDb();
